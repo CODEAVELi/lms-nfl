@@ -4,13 +4,158 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>LMS NFL – Live Tracker</title>
+
+  <!-- Pixel fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            tecmo: {
+              navy: '#0b1021',
+              blue: '#0d6cf2',
+              green: '#3cbc0d',
+              gold: '#f8b800',
+              red: '#e40058',
+              white: '#f5f7ff',
+              gray: '#9aa2b1',
+              field: '#1c7c2a',
+              shadow: '#05070f'
+            }
+          },
+          fontFamily: {
+            pixel: ['"Press Start 2P"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            pixelmono: ['"VT323"', 'ui-monospace', 'SFMono-Regular', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
   <meta name="color-scheme" content="light dark" />
   <style>
     html,body { height:100%; }
+    :root {
+      --tecmo-navy: #0b1021;
+      --tecmo-blue: #0d6cf2;
+      --tecmo-green: #3cbc0d;
+      --tecmo-gold: #f8b800;
+      --tecmo-red: #e40058;
+      --tecmo-white: #f5f7ff;
+      --tecmo-shadow: #05070f;
+      --tecmo-outline: #0b1021;
+    }
+    body.tecmo {
+      background-color: var(--tecmo-navy);
+      color: var(--tecmo-white);
+    }
+    /* Subtle pixel grid + blue wash */
+    .grid-bg {
+      background-image:
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 8px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.04) 0, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 8px),
+        linear-gradient(180deg, rgba(13,108,242,0.08), transparent);
+    }
+    .pixel-font { font-family: "Press Start 2P", ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.5px; }
+    .pixel-mono { font-family: "VT323", ui-monospace, SFMono-Regular, monospace; font-size: 1.05rem; }
+    .sprite { image-rendering: pixelated; image-rendering: crisp-edges; }
+    .team-logo { width: 20px; height: 16px; position: relative; display: inline-flex; align-items: center; justify-content: center; }
+    .team-logo img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+    .team-chip { width: 20px; height: 16px; border: 2px solid var(--tecmo-white); background: #0e142a; color: var(--tecmo-white); box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15); display: inline-flex; align-items: center; justify-content: center; font-family: "Press Start 2P", ui-sans-serif, system-ui, sans-serif; font-size: 9px; line-height: 1; }
+    .panel-8bit {
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.06));
+      border: 2px solid var(--tecmo-white);
+      box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15);
+    }
+    .btn-8bit {
+      border: 2px solid var(--tecmo-white);
+      background-color: var(--tecmo-blue);
+      color: var(--tecmo-white);
+      box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 -2px 0 0 var(--tecmo-shadow);
+      transition: transform 80ms, filter 80ms;
+    }
+    .btn-8bit:hover { filter: brightness(1.05); }
+    .btn-8bit:active { transform: translateY(1px); box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 1px 0 0 var(--tecmo-shadow); }
+    .btn-8bit.secondary {
+      background-color: transparent;
+      color: var(--tecmo-white);
+      border-color: var(--tecmo-white);
+    }
+    .btn-8bit.warn { background-color: var(--tecmo-gold); color: #1b1400; }
+    .btn-8bit.danger { background-color: var(--tecmo-red); }
+    .pill-8bit {
+      border: 2px solid var(--tecmo-white);
+      padding: 6px 10px;
+      background: transparent;
+      color: var(--tecmo-white);
+      box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15);
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    .pill-8bit.active { background: var(--tecmo-green); color: #021304; }
+    .badge-8bit {
+      display: inline-block;
+      padding: 2px 6px;
+      border: 2px solid var(--tecmo-white);
+      box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .badge-pending { background: #1c233e; color: #b8c0ff; }
+    .badge-win { background: var(--tecmo-green); color: #05250b; }
+    .badge-lose { background: var(--tecmo-red); color: #ffe6ef; }
+    .badge-push { background: var(--tecmo-gold); color: #1a1400; }
+    .table-8bit th, .table-8bit td { border-top: 2px solid rgba(255,255,255,0.12); }
+    .table-8bit thead th { background: rgba(255,255,255,0.06); border-bottom: 2px solid rgba(255,255,255,0.2); }
+    .table-row-win { background: rgba(60,188,13,0.08); }
+    .table-row-lose { background: rgba(228,0,88,0.08); }
+    .table-row-push { background: rgba(248,184,0,0.08); }
+    /* Scoreboard */
+    .scoreboard {
+      border: 3px solid var(--tecmo-white);
+      background: linear-gradient(180deg, #0a0f1f, #121a36);
+      box-shadow: 0 0 0 3px var(--tecmo-shadow), inset 0 0 0 2px rgba(255,255,255,0.12);
+      color: var(--tecmo-white);
+    }
+    .kickoff { display: flex; align-items: center; gap: 6px; }
+    .bulb {
+      width: 12px; height: 12px; border: 2px solid var(--tecmo-white);
+      border-radius: 50%;
+      background: #1c233e;
+      box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15);
+      opacity: .4;
+    }
+    .is-live .bulb { animation: chase 1.1s linear infinite; opacity: .9; }
+    .is-live .bulb:nth-child(1) { animation-delay: 0s; background: var(--tecmo-gold); }
+    .is-live .bulb:nth-child(2) { animation-delay: .12s; background: var(--tecmo-gold); }
+    .is-live .bulb:nth-child(3) { animation-delay: .24s; background: var(--tecmo-gold); }
+    .is-live .bulb:nth-child(4) { animation-delay: .36s; background: var(--tecmo-gold); }
+    .is-live .bulb:nth-child(5) { animation-delay: .48s; background: var(--tecmo-gold); }
+    @keyframes chase {
+      0%, 100% { filter: brightness(.9) drop-shadow(0 0 0 transparent); transform: translateY(0); }
+      50% { filter: brightness(1.3) drop-shadow(0 0 6px rgba(248,184,0,.6)); transform: translateY(-1px); }
+    }
+    .progress-8bit { height: 14px; border: 2px solid var(--tecmo-white); box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15); }
+    .progress-8bit .bar { height: 100%; background: linear-gradient(90deg, var(--tecmo-red), #f95c96); }
+    /* Inputs */
+    .input-8bit, .select-8bit, .textarea-8bit {
+      background: #0e142a; color: var(--tecmo-white);
+      border: 2px solid var(--tecmo-white);
+      box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15);
+    }
+    .helper-8bit { color: #9aa2b1; font-size: 11px; }
+    @media (max-width: 480px) {
+      .pixel-font { font-size: 11px; }
+      .scoreboard .pixel-font { font-size: 10px; }
+    }
   </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 text-zinc-900 dark:text-zinc-100">
+<body class="min-h-screen tecmo grid-bg">
   <div id="root"></div>
 
   <!-- React + Babel (so we can paste JSX without a build) -->
@@ -252,32 +397,53 @@
       return display;
     }
 
+    // Team logo component:
+    // - Attempts to load /assets/logos/ABBR.svg (preferred) and falls back to showing a pixel chip with the team abbreviation.
+    // - To use logos: drop SVG files into /assets/logos (e.g., /assets/logos/KC.svg). PNGs also supported by changing extension.
+    function TeamIcon({ teamName }) {
+      const abbr = aliasForTeam(teamName) || "";
+      const [loaded, setLoaded] = React.useState(false);
+      const src = abbr ? `assets/logos/${abbr}.svg` : "";
+
+      return (
+        <span className="team-logo" aria-label={abbr || "team"}>
+          {!loaded && <span className="team-chip">{abbr || "??"}</span>}
+          {src && (
+            <img
+              src={src}
+              alt=""
+              aria-hidden="true"
+              onLoad={() => setLoaded(true)}
+              onError={() => setLoaded(false)}
+              style={{ display: loaded ? "block" : "none" }}
+            />
+          )}
+        </span>
+      );
+    }
+
     const StatCard = ({ title, value, sub }) => (
-      <div className="rounded-2xl bg-white/70 dark:bg-zinc-900/60 backdrop-blur p-5 shadow-sm border border-zinc-200 dark:border-zinc-800">
-        <div className="text-sm text-zinc-500">{title}</div>
-        <div className="mt-1 text-3xl font-semibold tracking-tight">{fmt(value)}</div>
-        {sub !== undefined && <div className="mt-1 text-xs text-zinc-400">{sub}</div>}
+      <div className="panel-8bit p-4">
+        <div className="pixel-font text-[10px] text-tecmo-white/80 uppercase">{title}</div>
+        <div className="mt-2 pixel-mono text-2xl">{fmt(value)}</div>
+        {sub !== undefined && <div className="mt-1 helper-8bit">{sub}</div>}
       </div>
     );
 
     const Pill = ({ active, children, onClick }) => (
-      <button onClick={onClick}
-        className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
-          active ? "bg-zinc-900 text-white border-zinc-900 shadow"
-                 : "bg-white/70 dark:bg-zinc-900/60 border-zinc-200 dark:border-zinc-800 hover:bg-white"
-        }`}>
+      <button onClick={onClick} className={`pill-8bit ${active ? "active" : ""}`}>
         {children}
       </button>
     );
 
     const ResultBadge = ({ result }) => {
       const map = {
-        [RESULT.Pending]: "bg-zinc-100 text-zinc-700 border-zinc-200",
-        [RESULT.Win]: "bg-green-100 text-green-800 border-green-200",
-        [RESULT.Lose]: "bg-red-100 text-red-800 border-red-200",
-        [RESULT.Push]: "bg-amber-100 text-amber-800 border-amber-200",
+        [RESULT.Pending]: "badge-pending",
+        [RESULT.Win]: "badge-win",
+        [RESULT.Lose]: "badge-lose",
+        [RESULT.Push]: "badge-push",
       };
-      return <span className={`px-2 py-0.5 rounded-full text-xs border ${map[result]}`}>{result}</span>;
+      return <span className={`badge-8bit ${map[result]}`}>{result}</span>;
     };
 
     function App() {
@@ -545,17 +711,74 @@
         return (
           <div>
             <div className="font-medium">{`${vsAt} ${opponent}`}</div>
-            <div className="text-xs text-zinc-500">{statusText}</div>
+            <div className="text-[11px] text-tecmo-white/70">{statusText}</div>
           </div>
         );
       };
 
+      const hasLiveGames = useMemo(() => {
+        return (week?.teams || []).some((t) => t.live && t.live.state !== "pre" && !t.live.completed);
+      }, [week]);
+
+      const seasonTypeLabel = useMemo(() => {
+        switch (week?.seasonType) {
+          case 1: return "Preseason";
+          case 3: return "Postseason";
+          default: return "Regular";
+        }
+      }, [week?.seasonType]);
+
       return (
-        <div className="mx-auto max-w-7xl px-6 py-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+          {/* Scoreboard Header */}
+          <div className={`scoreboard rounded-md p-3 sm:p-4 mb-6 ${hasLiveGames ? "is-live" : ""}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="kickoff" aria-label={hasLiveGames ? "Kickoff lights on" : "Kickoff lights off"}>
+                  <span className="bulb"></span>
+                  <span className="bulb"></span>
+                  <span className="bulb"></span>
+                  <span className="bulb"></span>
+                  <span className="bulb"></span>
+                </div>
+                <div className="pixel-font text-tecmo-gold text-[10px] sm:text-xs uppercase tracking-wider">LMS NFL</div>
+              </div>
+              <div className="text-center flex-1">
+                <div className="pixel-font text-[10px] sm:text-xs">
+                  Week {week.weekNumber} • {seasonTypeLabel} {week.season}
+                </div>
+                <div className="pixel-mono text-tecmo-gold text-lg sm:text-2xl">{week.name}</div>
+              </div>
+              <div className="text-right">
+                <div className="pixel-font text-[10px] sm:text-xs">Last Sync</div>
+                <div className="pixel-mono">{week.lastFetchedUtc ? new Date(week.lastFetchedUtc).toLocaleTimeString() : "—"}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+              <div className="panel-8bit p-2 text-center">
+                <div className="pixel-font text-[10px] uppercase">Survivors</div>
+                <div className="pixel-mono text-tecmo-green text-lg sm:text-xl">{fmt(animSurv)}</div>
+              </div>
+              <div className="panel-8bit p-2 text-center">
+                <div className="pixel-font text-[10px] uppercase">Eliminated</div>
+                <div className="pixel-mono text-tecmo-red text-lg sm:text-xl">{fmt(animElim)}</div>
+              </div>
+              <div className="panel-8bit p-2 text-center">
+                <div className="pixel-font text-[10px] uppercase">Grand Total</div>
+                <div className="pixel-mono text-lg sm:text-xl">{fmt(sums.grandTotal)}</div>
+              </div>
+              <div className="panel-8bit p-2 text-center">
+                <div className="pixel-font text-[10px] uppercase">Auto Refresh</div>
+                <div className="pixel-mono">{autoRefresh ? "ON" : "OFF"}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Header + week tabs */}
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Last Man Standing – NFL</h1>
-              <p className="text-sm text-zinc-500 mt-1">Live elimination tracker with one-click ESPN score sync.</p>
+              <h1 className="pixel-font text-tecmo-gold text-xl md:text-2xl">Last Man Standing – NFL</h1>
+              <p className="helper-8bit mt-1">Live elimination tracker with one-click ESPN score sync.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {weeks.map((w, i) => (
@@ -565,13 +788,14 @@
               ))}
               <button
                 onClick={() => addWeek()}
-                className="px-3 py-1.5 rounded-full text-sm border border-zinc-300 dark:border-zinc-700 hover:bg-white/70 dark:hover:bg-zinc-800"
+                className="btn-8bit secondary px-3 py-1.5 text-xs"
               >
                 + Add Week
               </button>
             </div>
           </div>
 
+          {/* Quick stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
             <StatCard title="Grand Total" value={sums.grandTotal} sub="Entries at week lock" />
             <StatCard title="Pre-Eliminated" value={sums.preOutTotal} sub="No pick • Double-Out" />
@@ -579,21 +803,23 @@
             <StatCard title="Survivors" value={animSurv} sub={`${(100 - sums.pct).toFixed(1)}% remaining`} />
           </div>
 
+          {/* Progress */}
           <div className="mt-4">
-            <div className="h-3 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-              <div className="h-full bg-red-500 transition-all" style={{ width: `${Math.min(100, sums.pct).toFixed(2)}%` }}></div>
+            <div className="progress-8bit overflow-hidden">
+              <div className="bar" style={{ width: `${Math.min(100, sums.pct).toFixed(2)}%` }}></div>
             </div>
-            <div className="text-xs mt-1 text-zinc-500">{sums.pct.toFixed(1)}% eliminated</div>
+            <div className="helper-8bit mt-1">{sums.pct.toFixed(1)}% eliminated</div>
           </div>
 
+          {/* Sync notice */}
           {syncNotice && (
             <div
-              className={`mt-6 rounded-xl border px-4 py-3 text-sm ${
+              className={`mt-6 panel-8bit px-4 py-3 text-sm ${
                 syncNotice.type === "error"
-                  ? "border-red-300 bg-red-50 text-red-800"
+                  ? "bg-[rgba(228,0,88,0.15)]"
                   : syncNotice.type === "warn"
-                  ? "border-amber-300 bg-amber-50 text-amber-800"
-                  : "border-emerald-300 bg-emerald-50 text-emerald-800"
+                  ? "bg-[rgba(248,184,0,0.15)]"
+                  : "bg-[rgba(60,188,13,0.15)]"
               }`}
             >
               {syncNotice.text}
@@ -602,15 +828,15 @@
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
             <div className="lg:col-span-2">
-              <div className="rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-sm bg-white/80 dark:bg-zinc-900/60">
-                <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Picks ({week.name})</h2>
-                  <div className="text-xs text-zinc-500">Sync scores or override manually.</div>
+              <div className="panel-8bit rounded-md overflow-hidden">
+                <div className="px-5 py-4 border-b border-white/20 flex items-center justify-between">
+                  <h2 className="pixel-font text-sm">Picks ({week.name})</h2>
+                  <div className="helper-8bit">Sync scores or override manually.</div>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm table-8bit">
                     <thead>
-                      <tr className="text-left bg-zinc-50/60 dark:bg-zinc-900/40">
+                      <tr className="text-left">
                         <th className="px-4 py-3">Team</th>
                         <th className="px-4 py-3">Picks</th>
                         <th className="px-4 py-3">Result</th>
@@ -623,36 +849,38 @@
                       {(week.teams || []).map((t, idx) => (
                         <tr
                           key={t.team + idx}
-                          className={`border-t border-zinc-100 dark:border-zinc-800 ${
+                          className={`${
                             t.result === RESULT.Lose
-                              ? "bg-red-50/60 dark:bg-red-950/20"
+                              ? "table-row-lose"
                               : t.result === RESULT.Win
-                              ? "bg-green-50/50 dark:bg-green-950/10"
+                              ? "table-row-win"
                               : t.result === RESULT.Push
-                              ? "bg-amber-50/50 dark:bg-amber-950/10"
+                              ? "table-row-push"
                               : ""
                           }`}
                         >
-                          <td className="px-4 py-3 font-medium">{t.team}</td>
+                          <td className="px-4 py-3 font-medium">
+                            <div className="flex items-center gap-2">
+                              <TeamIcon teamName={t.team} />
+                              <span>{t.team}</span>
+                            </div>
+                          </td>
                           <td className="px-4 py-3 tabular-nums">{fmt(Number(t.count) || 0)}</td>
                           <td className="px-4 py-3"><ResultBadge result={t.result} /></td>
                           <td className="px-4 py-3 tabular-nums">{renderScore(t)}</td>
                           <td className="px-4 py-3">{renderGameLine(t)}</td>
                           <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-nowrap gap-2 whitespace-nowrap">
                               {[RESULT.Win, RESULT.Lose, RESULT.Push, RESULT.Pending].map((r) => {
-                                const label = r === RESULT.Push ? "Push (Loss)" : r;
+                                const label = r === RESULT.Push ? "Push (Lose)" : r;
                                 const title = r === RESULT.Push ? "Push counts as a loss" : undefined;
+                                const isActive = r === t.result;
                                 return (
                                   <button
                                     key={r}
                                     onClick={() => setTeamResult(t.team, r)}
                                     title={title}
-                                    className={`px-2.5 py-1 rounded-md text-xs border transition ${
-                                      r === t.result
-                                        ? "bg-zinc-900 text-white border-zinc-900"
-                                        : "bg-white/70 dark:bg-zinc-900/60 border-zinc-300 dark:border-zinc-700 hover:bg-white"
-                                    }`}
+                                    className={`${isActive ? "btn-8bit" : "btn-8bit secondary"} px-2.5 py-1 text-[11px]`}
                                   >
                                     {label}
                                   </button>
@@ -666,12 +894,12 @@
                   </table>
                 </div>
 
-                <div className="px-5 py-4 border-t border-zinc-200 dark:border-zinc-800">
-                  <h3 className="font-semibold mb-2">Already Out</h3>
+                <div className="px-5 py-4 border-t border-white/20">
+                  <h3 className="pixel-font text-xs mb-2 uppercase">Already Out</h3>
                   <ul className="space-y-1 text-sm">
                     {(week.preOut || []).map((p, i) => (
                       <li key={i} className="flex items-center justify-between">
-                        <span className="text-zinc-500">{p.label}</span>
+                        <span className="text-tecmo-white/80">{p.label}</span>
                         <span className="font-medium tabular-nums">{fmt(Number(p.count) || 0)}</span>
                       </li>
                     ))}
@@ -681,13 +909,13 @@
             </div>
 
             <div className="space-y-6">
-              <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 p-5 shadow-sm">
-                <h3 className="font-semibold">Manage Weeks & Picks</h3>
+              <div className="panel-8bit p-5 rounded-md">
+                <h3 className="pixel-font text-sm uppercase">Manage Weeks & Picks</h3>
                 <div className="mt-3 space-y-3 text-sm">
                   <label className="block">
-                    <span className="text-xs text-zinc-500">Rename current week</span>
+                    <span className="helper-8bit">Rename current week</span>
                     <input
-                      className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      className="input-8bit mt-1 w-full px-3 py-2"
                       value={week.name}
                       onChange={(e) => {
                         const value = e.target.value;
@@ -701,20 +929,20 @@
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => addWeek(`Week ${weeks.length + 1}`)}
-                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 hover:bg-white/70 dark:hover:bg-zinc-800"
+                      className="btn-8bit secondary px-3 py-2"
                     >
                       + New Week
                     </button>
                     <button
                       onClick={exportJSON}
-                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 hover:bg-white/70 dark:hover:bg-zinc-800"
+                      className="btn-8bit secondary px-3 py-2"
                     >
                       Export JSON
                     </button>
                   </div>
 
                   <label className="block">
-                    <span className="text-xs text-zinc-500">Import JSON (export format)</span>
+                    <span className="helper-8bit">Import JSON (export format)</span>
                     <input
                       type="file"
                       accept="application/json"
@@ -724,9 +952,9 @@
                   </label>
 
                   <label className="block">
-                    <span className="text-xs text-zinc-500">Paste teams (Team,Count per line)</span>
+                    <span className="helper-8bit">Paste teams (Team,Count per line)</span>
                     <textarea
-                      className="mt-1 w-full min-h-[120px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      className="textarea-8bit mt-1 w-full min-h-[120px] px-3 py-2"
                       placeholder={"Patriots,210\nChiefs,463"}
                       onBlur={(e) => {
                         if (e.target.value.trim()) {
@@ -735,14 +963,14 @@
                         }
                       }}
                     ></textarea>
-                    <div className="text-[11px] text-zinc-500 mt-1">Tip: switch to a future week, paste new picks, and sync.</div>
+                    <div className="helper-8bit mt-1">Tip: switch to a future week, paste new picks, and sync.</div>
                   </label>
 
                   <label className="block">
-                    <span className="text-xs text-zinc-500">Grand Total (optional – defaults to picks + pre-out)</span>
+                    <span className="helper-8bit">Grand Total (optional – defaults to picks + pre-out)</span>
                     <input
                       type="number"
-                      className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      className="input-8bit mt-1 w-full px-3 py-2"
                       value={week.declaredGrandTotal}
                       onChange={(e) => {
                         const value = Number(e.target.value);
@@ -756,10 +984,10 @@
                   </label>
 
                   <label className="block">
-                    <span className="text-xs text-zinc-500">Season (e.g. 2024)</span>
+                    <span className="helper-8bit">Season (e.g. 2024)</span>
                     <input
                       type="number"
-                      className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      className="input-8bit mt-1 w-full px-3 py-2"
                       value={week.season}
                       onChange={(e) => {
                         const value = Number(e.target.value);
@@ -774,10 +1002,10 @@
 
                   <div className="grid grid-cols-2 gap-3">
                     <label className="block">
-                      <span className="text-xs text-zinc-500">NFL Week #</span>
+                      <span className="helper-8bit">NFL Week #</span>
                       <input
                         type="number"
-                        className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                        className="input-8bit mt-1 w-full px-3 py-2"
                         value={week.weekNumber}
                         onChange={(e) => {
                           const value = Number(e.target.value);
@@ -790,9 +1018,9 @@
                       />
                     </label>
                     <label className="block">
-                      <span className="text-xs text-zinc-500">Season Phase</span>
+                      <span className="helper-8bit">Season Phase</span>
                       <select
-                        className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                        className="select-8bit mt-1 w-full px-3 py-2"
                         value={week.seasonType}
                         onChange={(e) => {
                           const value = Number(e.target.value);
@@ -812,32 +1040,32 @@
                     </label>
                   </div>
 
-                  <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/60 p-3 space-y-3">
+                  <div className="panel-8bit p-3 space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => fetchScores()}
                         disabled={syncing}
-                        className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-white/70 dark:hover:bg-zinc-800 disabled:opacity-60"
+                        className={`btn-8bit warn inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-60`}
                       >
                         {syncing ? "Syncing…" : "Sync Live Scores"}
                       </button>
-                      <label className="inline-flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+                      <label className="inline-flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"
-                          className="rounded border border-zinc-300 dark:border-zinc-600"
+                          className="accent-[var(--tecmo-gold)]"
                           checked={autoRefresh}
                           onChange={(e) => setAutoRefresh(e.target.checked)}
                         />
-                        Auto refresh every 60s
+                        <span className="helper-8bit">Auto refresh every 60s</span>
                       </label>
                     </div>
-                    <div className="text-[11px] text-zinc-500">
+                    <div className="helper-8bit">
                       Source: ESPN public scoreboard API. Last sync:{" "}
                       {week.lastFetchedUtc ? new Date(week.lastFetchedUtc).toLocaleString() : "never"}
                     </div>
                     {(week.lastWarnings || []).length > 0 && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                        <div className="font-semibold">Teams needing manual review</div>
+                      <div className="panel-8bit bg-[rgba(248,184,0,0.12)] px-3 py-2 text-[11px]">
+                        <div className="pixel-font text-[11px]">Teams needing manual review</div>
                         <ul className="mt-1 space-y-1">
                           {week.lastWarnings.map((w, i) => (
                             <li key={i}>• {w}</li>
@@ -848,9 +1076,9 @@
                   </div>
 
                   <label className="block">
-                    <span className="text-xs text-zinc-500">Pre-Out (label:count, one per line)</span>
+                    <span className="helper-8bit">Pre-Out (label:count, one per line)</span>
                     <textarea
-                      className="mt-1 w-full min-h-[80px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      className="textarea-8bit mt-1 w-full min-h-[80px] px-3 py-2"
                       defaultValue={(week.preOut || []).map((p) => `${p.label}:${p.count}`).join("\n")}
                       onBlur={(e) => {
                         const preOut = e.target.value
@@ -873,12 +1101,12 @@
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 p-5 shadow-sm">
-                <h3 className="font-semibold">Quick How-To</h3>
-                <ol className="mt-2 space-y-2 text-sm list-decimal list-inside text-zinc-600 dark:text-zinc-300">
+              <div className="panel-8bit p-5 rounded-md">
+                <h3 className="pixel-font text-sm uppercase">Quick How-To</h3>
+                <ol className="mt-2 space-y-2 text-sm list-decimal list-inside">
                   <li>Pick a week above (add the next week when ready).</li>
                   <li>Paste your picks (Team,Count per line) or edit inline.</li>
-                  <li>Hit <span className="font-medium">Sync Live Scores</span> to pull ESPN results.</li>
+                  <li>Hit <span className="pixel-font">Sync Live Scores</span> to pull ESPN results.</li>
                   <li>Manual overrides still work — ties count as losses when syncing.</li>
                   <li>Export/Import JSON for off-line backups between weeks.</li>
                 </ol>
@@ -886,8 +1114,8 @@
             </div>
           </div>
 
-          <div className="mt-10 text-center text-xs text-zinc-500">
-            Built for your LMS pool • Powered by ESPN live scores • Dark mode supported
+          <div className="mt-10 text-center text-xs text-tecmo-white/70">
+            Built for your LMS pool • Powered by ESPN live scores • Tecmo skin
           </div>
         </div>
       );
@@ -897,4 +1125,4 @@
     root.render(<App />);
   </script>
 </body>
-</html>
+</html>]
