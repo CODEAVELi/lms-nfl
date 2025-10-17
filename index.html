@@ -285,8 +285,10 @@
       const noticeTimeoutRef = useRef(null);
 
       const [autoRefresh, setAutoRefresh] = useState(() => {
-        if (typeof window === "undefined") return false;
-        return localStorage.getItem(AUTO_REFRESH_KEY) === "true";
+        if (typeof window === "undefined") return true;
+        const stored = localStorage.getItem(AUTO_REFRESH_KEY);
+        if (stored === null) return true;
+        return stored === "true";
       });
 
       const week = weeks[selectedIndex] || weeks[0] || DEFAULT_WEEK7;
