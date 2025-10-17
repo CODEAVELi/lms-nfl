@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LMS NFL – Countdown</title>
+  <title>LMS NFL – Live Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <meta name="color-scheme" content="light dark" />
   <style>
@@ -19,30 +19,115 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel">
-    const { useState, useMemo, useEffect, useRef } = React;
+    const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
     const RESULT = { Pending: "Pending", Win: "Win", Lose: "Lose", Push: "Push" };
+    const STORAGE_KEY = "lmsNFL.weeks.v2";
+    const AUTO_REFRESH_KEY = "lmsNFL.autoRefresh";
+    const AUTO_REFRESH_INTERVAL_MS = 60_000;
+
+    const SEASON_TYPES = [
+      { value: 1, label: "Preseason" },
+      { value: 2, label: "Regular Season" },
+      { value: 3, label: "Postseason" },
+    ];
+
+    const TEAM_CATALOG = [
+      { abbr: "ARI", names: ["Cardinals", "Arizona Cardinals", "Arizona", "Zona"] },
+      { abbr: "ATL", names: ["Falcons", "Atlanta Falcons"] },
+      { abbr: "BAL", names: ["Ravens", "Baltimore Ravens"] },
+      { abbr: "BUF", names: ["Bills", "Buffalo Bills"] },
+      { abbr: "CAR", names: ["Panthers", "Carolina Panthers"] },
+      { abbr: "CHI", names: ["Bears", "Chicago Bears"] },
+      { abbr: "CIN", names: ["Bengals", "Cincinnati Bengals"] },
+      { abbr: "CLE", names: ["Browns", "Cleveland Browns"] },
+      { abbr: "DAL", names: ["Cowboys", "Dallas Cowboys"] },
+      { abbr: "DEN", names: ["Broncos", "Denver Broncos"] },
+      { abbr: "DET", names: ["Lions", "Detroit Lions"] },
+      { abbr: "GB", names: ["Packers", "Green Bay Packers", "Pack"] },
+      { abbr: "HOU", names: ["Texans", "Houston Texans"] },
+      { abbr: "IND", names: ["Colts", "Indianapolis Colts"] },
+      { abbr: "JAX", names: ["Jaguars", "Jacksonville Jaguars", "Jags"] },
+      { abbr: "KC", names: ["Chiefs", "Kansas City Chiefs"] },
+      { abbr: "LV", names: ["Raiders", "Las Vegas Raiders", "Oakland Raiders"] },
+      { abbr: "LAC", names: ["Chargers", "Los Angeles Chargers", "LA Chargers", "San Diego Chargers", "Bolts"] },
+      { abbr: "LAR", names: ["Rams", "Los Angeles Rams", "LA Rams", "St Louis Rams"] },
+      { abbr: "MIA", names: ["Dolphins", "Miami Dolphins", "Fins"] },
+      { abbr: "MIN", names: ["Vikings", "Minnesota Vikings", "Vikes"] },
+      { abbr: "NE", names: ["Patriots", "New England Patriots", "Pats"] },
+      { abbr: "NO", names: ["Saints", "New Orleans Saints", "Nola"] },
+      { abbr: "NYG", names: ["Giants", "New York Giants", "NY Giants", "G-Men"] },
+      { abbr: "NYJ", names: ["Jets", "New York Jets", "NY Jets"] },
+      { abbr: "PHI", names: ["Eagles", "Philadelphia Eagles", "Philly"] },
+      { abbr: "PIT", names: ["Steelers", "Pittsburgh Steelers"] },
+      { abbr: "SF", names: ["49ers", "San Francisco 49ers", "Niners", "Forty Niners", "SF 49ers"] },
+      { abbr: "SEA", names: ["Seahawks", "Seattle Seahawks", "Hawks"] },
+      { abbr: "TB", names: ["Buccaneers", "Tampa Bay Buccaneers", "Bucs"] },
+      { abbr: "TEN", names: ["Titans", "Tennessee Titans"] },
+      { abbr: "WAS", names: ["Commanders", "Washington Commanders", "Washington Football Team", "Football Team", "Redskins", "Washington"] },
+    ];
+
+    const TEAM_ALIASES = TEAM_CATALOG.reduce((acc, { abbr, names }) => {
+      const uppercaseAbbr = abbr.toUpperCase();
+      const canonical = uppercaseAbbr.replace(/[^A-Z0-9]/g, "");
+      acc[uppercaseAbbr] = uppercaseAbbr;
+      acc[canonical] = uppercaseAbbr;
+      names.forEach((name) => {
+        if (!name) return;
+        const key = name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (key) acc[key] = uppercaseAbbr;
+      });
+      return acc;
+    }, {});
+
     const fmt = (n) => Number.isFinite(n) ? n.toLocaleString() : "0";
 
-    function useAnimatedNumber(value, duration = 600) {
-      const [display, setDisplay] = useState(value);
-      useEffect(() => {
-        const from = display, to = value, start = performance.now();
-        let raf;
-        const tick = (now) => {
-          const t = Math.min(1, (now - start) / duration);
-          const eased = 1 - Math.pow(1 - t, 3);
-          setDisplay(Math.round(from + (to - from) * eased));
-          if (t < 1) raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf);
-      }, [value]);
-      return display;
+    function getDefaultSeason() {
+      const now = new Date();
+      return now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
     }
 
-    const DEFAULT_WEEK7 = {
+    function normalizedResult(value) {
+      const next = typeof value === "string" ? value.trim() : "";
+      return Object.values(RESULT).includes(next) ? next : RESULT.Pending;
+    }
+
+    function normalizeTeam(team = {}) {
+      const count = Number(team.count);
+      return {
+        team: (team.team || "").trim(),
+        count: Number.isFinite(count) ? count : 0,
+        result: normalizedResult(team.result),
+        live: team.live || null,
+      };
+    }
+
+    function normalizeWeek(week = {}) {
+      const declared = Number(week.declaredGrandTotal);
+      return {
+        name: week.name || "Week",
+        preOut: Array.isArray(week.preOut)
+          ? week.preOut.map((p) => ({
+              label: (p.label || "Pre-Out").trim(),
+              count: Number.isFinite(Number(p.count)) ? Number(p.count) : 0,
+            }))
+          : [],
+        teams: Array.isArray(week.teams) ? week.teams.map(normalizeTeam) : [],
+        declaredGrandTotal: Number.isFinite(declared) ? declared : 0,
+        season: Number.isFinite(Number(week.season)) ? Number(week.season) : getDefaultSeason(),
+        weekNumber: Number.isFinite(Number(week.weekNumber)) ? Number(week.weekNumber) : 1,
+        seasonType: Number.isFinite(Number(week.seasonType)) ? Number(week.seasonType) : 2,
+        lastFetchedUtc: week.lastFetchedUtc || null,
+        lastWarnings: Array.isArray(week.lastWarnings) ? week.lastWarnings : [],
+        lastSource: week.lastSource || null,
+      };
+    }
+
+    const DEFAULT_WEEK7 = normalizeWeek({
       name: "Week 7",
+      season: getDefaultSeason(),
+      seasonType: 2,
+      weekNumber: 7,
       preOut: [
         { label: "No Pick – Out", count: 5 },
         { label: "Lions – Double – Out", count: 2 },
@@ -68,7 +153,101 @@
         { team: "Vikings", count: 1, result: RESULT.Pending },
       ],
       declaredGrandTotal: 997,
-    };
+    });
+
+    function loadInitialWeeks() {
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length) {
+              return parsed.map(normalizeWeek);
+            }
+          }
+        } catch (_) {
+          console.warn("Could not load stored LMS weeks");
+        }
+      }
+      return [DEFAULT_WEEK7];
+    }
+
+    function aliasForTeam(name) {
+      const key = (name || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      return TEAM_ALIASES[key] || null;
+    }
+
+    function buildScoreIndex(events = []) {
+      const index = {};
+      (events || []).forEach((event) => {
+        const competition = event.competitions?.[0];
+        if (!competition) return;
+        const statusType = competition.status?.type || {};
+        const statusText = statusType.shortDetail || statusType.detail || "";
+        const competitors = competition.competitors || [];
+        competitors.forEach((competitor) => {
+          const opponent = competitors.find((c) => c.id !== competitor.id);
+          const abbr = competitor?.team?.abbreviation;
+          if (!abbr) return;
+          index[abbr.toUpperCase()] = {
+            competitor,
+            opponent,
+            status: statusType,
+            statusText,
+            date: competition.date,
+            eventId: event.id,
+          };
+        });
+      });
+      return index;
+    }
+
+    function formatGameTime(iso) {
+      if (!iso) return "";
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) return "";
+      return dt.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    }
+
+    function finalResultFromScores(usScore, themScore) {
+      if (!Number.isFinite(usScore) || !Number.isFinite(themScore)) return RESULT.Pending;
+      if (usScore > themScore) return RESULT.Win;
+      return RESULT.Lose;
+    }
+
+    function runSanityChecks() {
+      if (typeof console === "undefined") return;
+      const checks = [
+        ["Alias: Chiefs -> KC", aliasForTeam("Chiefs") === "KC"],
+        ["Alias: 49ers -> SF", aliasForTeam("49ers") === "SF"],
+        ["Alias: LA Chargers -> LAC", aliasForTeam("LA Chargers") === "LAC"],
+        ["Tie resolves to loss", finalResultFromScores(21, 21) === RESULT.Lose],
+      ];
+      if (console.groupCollapsed) console.groupCollapsed("LMS NFL validation");
+      checks.forEach(([label, pass]) => {
+        console[pass ? "log" : "warn"](`${pass ? "[OK]" : "[WARN]"} ${label}`);
+      });
+      if (console.groupEnd) console.groupEnd();
+    }
+
+    runSanityChecks();
+
+    function useAnimatedNumber(value, duration = 600) {
+      const [display, setDisplay] = useState(value);
+      useEffect(() => {
+        const from = display, to = value, start = performance.now();
+        let raf;
+        const tick = (now) => {
+          const t = Math.min(1, (now - start) / duration);
+          const eased = 1 - Math.pow(1 - t, 3);
+          setDisplay(Math.round(from + (to - from) * eased));
+          if (t < 1) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+      }, [value]);
+      return display;
+    }
 
     const StatCard = ({ title, value, sub }) => (
       <div className="rounded-2xl bg-white/70 dark:bg-zinc-900/60 backdrop-blur p-5 shadow-sm border border-zinc-200 dark:border-zinc-800">
@@ -99,18 +278,175 @@
     };
 
     function App() {
-      const [weeks, setWeeks] = useState([DEFAULT_WEEK7]);
+      const [weeks, setWeeks] = useState(loadInitialWeeks);
       const [selectedIndex, setSelectedIndex] = useState(0);
-      const week = weeks[selectedIndex];
+      const [syncing, setSyncing] = useState(false);
+      const [syncNotice, setSyncNotice] = useState(null);
+      const noticeTimeoutRef = useRef(null);
+
+      const [autoRefresh, setAutoRefresh] = useState(() => {
+        if (typeof window === "undefined") return false;
+        return localStorage.getItem(AUTO_REFRESH_KEY) === "true";
+      });
+
+      const week = weeks[selectedIndex] || weeks[0] || DEFAULT_WEEK7;
+
+      useEffect(() => {
+        if (typeof window === "undefined") return;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(weeks));
+      }, [weeks]);
+
+      useEffect(() => {
+        if (typeof window === "undefined") return;
+        localStorage.setItem(AUTO_REFRESH_KEY, autoRefresh ? "true" : "false");
+      }, [autoRefresh]);
+
+      useEffect(() => {
+        if (selectedIndex > weeks.length - 1) {
+          setSelectedIndex(Math.max(0, weeks.length - 1));
+        }
+      }, [weeks.length, selectedIndex]);
+
+      const clearNotice = useCallback(() => {
+        if (noticeTimeoutRef.current) {
+          clearTimeout(noticeTimeoutRef.current);
+          noticeTimeoutRef.current = null;
+        }
+      }, []);
+
+      const pushNotice = useCallback((notice) => {
+        clearNotice();
+        setSyncNotice(notice);
+        if (notice && notice.persist !== true) {
+          noticeTimeoutRef.current = setTimeout(() => setSyncNotice(null), 6000);
+        }
+      }, [clearNotice]);
+
+      useEffect(() => () => clearNotice(), [clearNotice]);
+
+      const fetchScores = useCallback(async ({ silent = false } = {}) => {
+        const currentWeek = weeks[selectedIndex];
+        if (!currentWeek) return;
+
+        const season = currentWeek.season || getDefaultSeason();
+        const seasonType = currentWeek.seasonType || 2;
+        const weekNumber = currentWeek.weekNumber || 1;
+
+        if (!silent) {
+          setSyncing(true);
+        }
+
+        try {
+          const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${weekNumber}&seasontype=${seasonType}&dates=${season}`;
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`ESPN responded with status ${response.status}`);
+          const data = await response.json();
+          const index = buildScoreIndex(data.events || []);
+          const warningsSet = new Set();
+          let finalsApplied = 0;
+
+          setWeeks((prev) =>
+            prev.map((w, i) => {
+              if (i !== selectedIndex) return w;
+              const updatedTeams = (w.teams || []).map((team) => {
+                const alias = aliasForTeam(team.team);
+                const info = alias ? index[alias] : null;
+                if (!info) {
+                  if (team.team) warningsSet.add(`No live data for "${team.team}" – check spelling or week.`);
+                  return { ...team, live: null };
+                }
+
+                const opponent = info.opponent;
+                const status = info.status || {};
+                const state = (status.state || "").toLowerCase();
+                const completed = Boolean(status.completed || state === "post");
+                const usScore = Number(info.competitor?.score);
+                const themScore = Number(opponent?.score);
+
+                let result = team.result;
+                if (completed && Number.isFinite(usScore) && Number.isFinite(themScore)) {
+                  result = finalResultFromScores(usScore, themScore);
+                  if (result !== RESULT.Pending) finalsApplied += 1;
+                } else if (!completed && (result === RESULT.Win || result === RESULT.Lose)) {
+                  // keep manual override
+                } else {
+                  result = RESULT.Pending;
+                }
+
+                return {
+                  ...team,
+                  result,
+                  live: {
+                    opponent: opponent?.team?.shortDisplayName || opponent?.team?.displayName || "",
+                    opponentAbbr: opponent?.team?.abbreviation || "",
+                    teamScore: Number.isFinite(usScore) ? usScore : null,
+                    opponentScore: Number.isFinite(themScore) ? themScore : null,
+                    state,
+                    statusText: info.statusText,
+                    kickoff: info.date,
+                    homeAway: info.competitor?.homeAway,
+                    completed,
+                  },
+                };
+              });
+
+              return {
+                ...w,
+                teams: updatedTeams,
+                lastFetchedUtc: new Date().toISOString(),
+                lastWarnings: Array.from(warningsSet),
+                lastSource: "espn",
+              };
+            })
+          );
+
+          if (!silent) {
+            const warnings = Array.from(warningsSet);
+            const type = warnings.length ? "warn" : "success";
+            const base = `Synced ESPN scores for Week ${weekNumber}${finalsApplied ? ` – ${finalsApplied} finals applied` : ""}`;
+            const text = warnings.length
+              ? `${base}. ${warnings.length} pick${warnings.length === 1 ? "" : "s"} need manual review.`
+              : base;
+            pushNotice({ type, text });
+          }
+        } catch (error) {
+          pushNotice({ type: "error", text: `Live score sync failed: ${error.message}` });
+        } finally {
+          if (!silent) {
+            setSyncing(false);
+          }
+        }
+      }, [weeks, selectedIndex, pushNotice]);
+
+      useEffect(() => {
+        if (!autoRefresh) return;
+        fetchScores({ silent: true });
+        const id = setInterval(() => fetchScores({ silent: true }), AUTO_REFRESH_INTERVAL_MS);
+        return () => clearInterval(id);
+      }, [autoRefresh, fetchScores]);
+
+      useEffect(() => {
+        if (autoRefresh) {
+          fetchScores({ silent: true });
+        }
+      }, [selectedIndex, autoRefresh, fetchScores]);
 
       const sums = useMemo(() => {
-        const picksTotal = week.teams.reduce((a,t)=>a+(+t.count||0),0);
-        const preOutTotal = week.preOut.reduce((a,p)=>a+(+p.count||0),0);
-        const losers = week.teams.filter(t=>t.result===RESULT.Lose).reduce((a,t)=>a+(+t.count||0),0);
+        if (!week) {
+          return { picksTotal: 0, preOutTotal: 0, losers: 0, eliminated: 0, survivors: 0, pct: 0, grandTotal: 0 };
+        }
+        const teams = Array.isArray(week.teams) ? week.teams : [];
+        const preOut = Array.isArray(week.preOut) ? week.preOut : [];
+        const picksTotal = teams.reduce((a, t) => a + (Number.isFinite(Number(t.count)) ? Number(t.count) : 0), 0);
+        const preOutTotal = preOut.reduce((a, p) => a + (Number.isFinite(Number(p.count)) ? Number(p.count) : 0), 0);
+        const losers = teams
+          .filter((t) => t.result === RESULT.Lose || t.result === RESULT.Push)
+          .reduce((a, t) => a + (Number.isFinite(Number(t.count)) ? Number(t.count) : 0), 0);
         const eliminated = preOutTotal + losers;
-        const grandTotal = week.declaredGrandTotal || picksTotal + preOutTotal;
+        const declared = Number(week.declaredGrandTotal);
+        const grandTotal = Number.isFinite(declared) && declared > 0 ? declared : picksTotal + preOutTotal;
         const survivors = Math.max(0, grandTotal - eliminated);
-        const pct = grandTotal>0 ? (eliminated/grandTotal)*100 : 0;
+        const pct = grandTotal > 0 ? (eliminated / grandTotal) * 100 : 0;
         return { picksTotal, preOutTotal, losers, eliminated, survivors, pct, grandTotal };
       }, [week]);
 
@@ -118,40 +454,95 @@
       const animSurv = useAnimatedNumber(sums.survivors);
 
       const setTeamResult = (teamName, result) => {
-        setWeeks(weeks.map((w,i)=> i!==selectedIndex ? w : {
-          ...w, teams: w.teams.map(t => t.team===teamName ? {...t, result} : t)
-        }));
+        const nextResult = normalizedResult(result);
+        setWeeks((prev) =>
+          prev.map((w, i) =>
+            i !== selectedIndex
+              ? w
+              : {
+                  ...w,
+                  teams: (w.teams || []).map((t) => (t.team === teamName ? { ...t, result: nextResult } : t)),
+                }
+          )
+        );
       };
 
-      const addWeek = (name=`Week ${weeks.length+1}`) => {
-        setWeeks(w => [...w, { name, preOut: [], teams: [], declaredGrandTotal: 0 }]);
+      const addWeek = (name = `Week ${weeks.length + 1}`) => {
+        const nextWeek = normalizeWeek({
+          name,
+          preOut: [],
+          teams: [],
+          declaredGrandTotal: 0,
+          season: getDefaultSeason(),
+          seasonType: 2,
+          weekNumber: weeks.length + 1,
+        });
+        setWeeks((prev) => [...prev, nextWeek]);
         setSelectedIndex(weeks.length);
       };
 
       const parseAndLoad = (text) => {
-        const parsed = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(line=>{
-          const [teamRaw, countRaw] = line.split(",");
-          const team = (teamRaw||"").trim();
-          const count = Number((countRaw||"").trim());
-          return { team, count: isNaN(count)?0:count, result: RESULT.Pending };
-        });
-        setWeeks(weeks.map((w,i)=> i!==selectedIndex ? w : { ...w, teams: parsed }));
+        const parsed = text
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const [teamRaw, countRaw] = line.split(",");
+            const team = (teamRaw || "").trim();
+            const count = Number(countRaw);
+            return normalizeTeam({ team, count: Number.isFinite(count) ? count : 0, result: RESULT.Pending, live: null });
+          });
+        setWeeks((prev) =>
+          prev.map((w, i) => (i !== selectedIndex ? w : { ...w, teams: parsed }))
+        );
       };
 
       const exportJSON = () => {
-        const blob = new Blob([JSON.stringify(weeks,null,2)], {type:"application/json"});
+        const blob = new Blob([JSON.stringify(weeks, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href=url; a.download="lms_weeks.json"; a.click();
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "lms_weeks.json";
+        a.click();
         URL.revokeObjectURL(url);
       };
 
       const importJSON = (file) => {
-        const r = new FileReader();
-        r.onload = () => { try {
-          const parsed = JSON.parse(r.result);
-          if (Array.isArray(parsed)) setWeeks(parsed);
-        } catch { alert("Invalid JSON"); } };
-        r.readAsText(file);
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const parsed = JSON.parse(reader.result);
+            if (Array.isArray(parsed)) {
+              setWeeks(parsed.map(normalizeWeek));
+              setSelectedIndex(0);
+              pushNotice({ type: "success", text: "Weeks import complete." });
+            }
+          } catch {
+            alert("Invalid JSON");
+          }
+        };
+        reader.readAsText(file);
+      };
+
+      const renderScore = (team) => {
+        const live = team.live;
+        if (!live) return "—";
+        if (!Number.isFinite(live.teamScore) || !Number.isFinite(live.opponentScore)) return "—";
+        return `${live.teamScore} – ${live.opponentScore}`;
+      };
+
+      const renderGameLine = (team) => {
+        const live = team.live;
+        if (!live) return "No live data";
+        const vsAt = live.homeAway === "home" ? "vs" : "@";
+        const opponent = live.opponent || live.opponentAbbr || "TBD";
+        const statusText = live.statusText || (live.state === "pre" ? formatGameTime(live.kickoff) : "In progress");
+        return (
+          <div>
+            <div className="font-medium">{`${vsAt} ${opponent}`}</div>
+            <div className="text-xs text-zinc-500">{statusText}</div>
+          </div>
+        );
       };
 
       return (
@@ -159,37 +550,57 @@
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Last Man Standing – NFL</h1>
-              <p className="text-sm text-zinc-500 mt-1">Live elimination tracker. Toggle results as games finish.</p>
+              <p className="text-sm text-zinc-500 mt-1">Live elimination tracker with one-click ESPN score sync.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {weeks.map((w,i)=>(
-                <Pill key={i} active={i===selectedIndex} onClick={()=>setSelectedIndex(i)}>{w.name}</Pill>
+              {weeks.map((w, i) => (
+                <Pill key={i} active={i === selectedIndex} onClick={() => setSelectedIndex(i)}>
+                  {w.name}
+                </Pill>
               ))}
-              <button onClick={()=>addWeek()}
-                className="px-3 py-1.5 rounded-full text-sm border border-zinc-300 dark:border-zinc-700 hover:bg-white/70 dark:hover:bg-zinc-800">+ Add Week</button>
+              <button
+                onClick={() => addWeek()}
+                className="px-3 py-1.5 rounded-full text-sm border border-zinc-300 dark:border-zinc-700 hover:bg-white/70 dark:hover:bg-zinc-800"
+              >
+                + Add Week
+              </button>
             </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
             <StatCard title="Grand Total" value={sums.grandTotal} sub="Entries at week lock" />
-            <StatCard title="Pre-Eliminated" value={sums.preOutTotal} sub="No pick + Double-Out" />
-            <StatCard title="Eliminated (Live)" value={animElim} sub={fmt(sums.losers) + " from losses"} />
+            <StatCard title="Pre-Eliminated" value={sums.preOutTotal} sub="No pick • Double-Out" />
+            <StatCard title="Eliminated (Live)" value={animElim} sub={`${fmt(sums.losers)} from losses/pushes`} />
             <StatCard title="Survivors" value={animSurv} sub={`${(100 - sums.pct).toFixed(1)}% remaining`} />
           </div>
 
           <div className="mt-4">
             <div className="h-3 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-              <div className="h-full bg-red-500 transition-all" style={{width: `${Math.min(100, sums.pct).toFixed(2)}%`}}></div>
+              <div className="h-full bg-red-500 transition-all" style={{ width: `${Math.min(100, sums.pct).toFixed(2)}%` }}></div>
             </div>
             <div className="text-xs mt-1 text-zinc-500">{sums.pct.toFixed(1)}% eliminated</div>
           </div>
+
+          {syncNotice && (
+            <div
+              className={`mt-6 rounded-xl border px-4 py-3 text-sm ${
+                syncNotice.type === "error"
+                  ? "border-red-300 bg-red-50 text-red-800"
+                  : syncNotice.type === "warn"
+                  ? "border-amber-300 bg-amber-50 text-amber-800"
+                  : "border-emerald-300 bg-emerald-50 text-emerald-800"
+              }`}
+            >
+              {syncNotice.text}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
             <div className="lg:col-span-2">
               <div className="rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-sm bg-white/80 dark:bg-zinc-900/60">
                 <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Picks ({week.name})</h2>
-                  <div className="text-xs text-zinc-500">Click a team to set result</div>
+                  <div className="text-xs text-zinc-500">Sync scores or override manually.</div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -198,28 +609,44 @@
                         <th className="px-4 py-3">Team</th>
                         <th className="px-4 py-3">Picks</th>
                         <th className="px-4 py-3">Result</th>
+                        <th className="px-4 py-3">Score</th>
+                        <th className="px-4 py-3">Game Status</th>
                         <th className="px-4 py-3">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {week.teams.map((t, idx)=>(
-                        <tr key={t.team+idx}
-                            className={`border-t border-zinc-100 dark:border-zinc-800 ${
-                              t.result===RESULT.Lose ? "bg-red-50/60 dark:bg-red-950/20"
-                              : t.result===RESULT.Win ? "bg-green-50/50 dark:bg-green-950/10"
-                              : t.result===RESULT.Push ? "bg-amber-50/50 dark:bg-amber-950/10" : ""
-                            }`}>
+                      {(week.teams || []).map((t, idx) => (
+                        <tr
+                          key={t.team + idx}
+                          className={`border-t border-zinc-100 dark:border-zinc-800 ${
+                            t.result === RESULT.Lose
+                              ? "bg-red-50/60 dark:bg-red-950/20"
+                              : t.result === RESULT.Win
+                              ? "bg-green-50/50 dark:bg-green-950/10"
+                              : t.result === RESULT.Push
+                              ? "bg-amber-50/50 dark:bg-amber-950/10"
+                              : ""
+                          }`}
+                        >
                           <td className="px-4 py-3 font-medium">{t.team}</td>
-                          <td className="px-4 py-3 tabular-nums">{fmt(t.count)}</td>
+                          <td className="px-4 py-3 tabular-nums">{fmt(Number(t.count) || 0)}</td>
                           <td className="px-4 py-3"><ResultBadge result={t.result} /></td>
+                          <td className="px-4 py-3 tabular-nums">{renderScore(t)}</td>
+                          <td className="px-4 py-3">{renderGameLine(t)}</td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-2">
-                              {[RESULT.Win, RESULT.Lose, RESULT.Push, RESULT.Pending].map(r=>(
-                                <button key={r} onClick={()=>setTeamResult(t.team, r)}
+                              {[RESULT.Win, RESULT.Lose, RESULT.Push, RESULT.Pending].map((r) => (
+                                <button
+                                  key={r}
+                                  onClick={() => setTeamResult(t.team, r)}
                                   className={`px-2.5 py-1 rounded-md text-xs border transition ${
-                                    r===t.result ? "bg-zinc-900 text-white border-zinc-900"
-                                                 : "bg-white/70 dark:bg-zinc-900/60 border-zinc-300 dark:border-zinc-700 hover:bg-white"
-                                  }`}>{r}</button>
+                                    r === t.result
+                                      ? "bg-zinc-900 text-white border-zinc-900"
+                                      : "bg-white/70 dark:bg-zinc-900/60 border-zinc-300 dark:border-zinc-700 hover:bg-white"
+                                  }`}
+                                >
+                                  {r}
+                                </button>
                               ))}
                             </div>
                           </td>
@@ -232,10 +659,10 @@
                 <div className="px-5 py-4 border-t border-zinc-200 dark:border-zinc-800">
                   <h3 className="font-semibold mb-2">Already Out</h3>
                   <ul className="space-y-1 text-sm">
-                    {week.preOut.map((p,i)=>(
+                    {(week.preOut || []).map((p, i) => (
                       <li key={i} className="flex items-center justify-between">
                         <span className="text-zinc-500">{p.label}</span>
-                        <span className="font-medium tabular-nums">{fmt(p.count)}</span>
+                        <span className="font-medium tabular-nums">{fmt(Number(p.count) || 0)}</span>
                       </li>
                     ))}
                   </ul>
@@ -249,47 +676,189 @@
                 <div className="mt-3 space-y-3 text-sm">
                   <label className="block">
                     <span className="text-xs text-zinc-500">Rename current week</span>
-                    <input className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                    <input
+                      className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
                       value={week.name}
-                      onChange={(e)=>{
-                        setWeeks(weeks.map((w,i)=> i===selectedIndex ? {...w, name:e.target.value} : w));
-                      }} />
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setWeeks((prev) =>
+                          prev.map((w, i) => (i === selectedIndex ? { ...w, name: value } : w))
+                        );
+                      }}
+                    />
                   </label>
+
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={()=>addWeek("Week "+(weeks.length+1))}
-                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 hover:bg-white/70 dark:hover:bg-zinc-800">+ New Week</button>
-                    <button onClick={exportJSON}
-                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 hover:bg-white/70 dark:hover:bg-zinc-800">Export JSON</button>
+                    <button
+                      onClick={() => addWeek(`Week ${weeks.length + 1}`)}
+                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 hover:bg-white/70 dark:hover:bg-zinc-800"
+                    >
+                      + New Week
+                    </button>
+                    <button
+                      onClick={exportJSON}
+                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 hover:bg-white/70 dark:hover:bg-zinc-800"
+                    >
+                      Export JSON
+                    </button>
                   </div>
+
                   <label className="block">
                     <span className="text-xs text-zinc-500">Import JSON (export format)</span>
-                    <input type="file" accept="application/json" className="mt-1 w-full text-xs"
-                      onChange={(e)=> e.target.files?.[0] && importJSON(e.target.files[0])} />
+                    <input
+                      type="file"
+                      accept="application/json"
+                      className="mt-1 w-full text-xs"
+                      onChange={(e) => e.target.files?.[0] && importJSON(e.target.files[0])}
+                    />
                   </label>
+
                   <label className="block">
                     <span className="text-xs text-zinc-500">Paste teams (Team,Count per line)</span>
-                    <textarea className="mt-1 w-full min-h-[120px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                    <textarea
+                      className="mt-1 w-full min-h-[120px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
                       placeholder={"Patriots,210\nChiefs,463"}
-                      onBlur={(e)=>{ if(e.target.value.trim()){ parseAndLoad(e.target.value); e.target.value=""; } }}></textarea>
-                    <div className="text-[11px] text-zinc-500 mt-1">Tip: switch to Week 8 above, paste your new picks, and you’re set.</div>
+                      onBlur={(e) => {
+                        if (e.target.value.trim()) {
+                          parseAndLoad(e.target.value);
+                          e.target.value = "";
+                        }
+                      }}
+                    ></textarea>
+                    <div className="text-[11px] text-zinc-500 mt-1">Tip: switch to a future week, paste new picks, and sync.</div>
                   </label>
+
                   <label className="block">
                     <span className="text-xs text-zinc-500">Grand Total (optional – defaults to picks + pre-out)</span>
-                    <input type="number" className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                    <input
+                      type="number"
+                      className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
                       value={week.declaredGrandTotal}
-                      onChange={(e)=>{
-                        setWeeks(weeks.map((w,i)=> i===selectedIndex ? {...w, declaredGrandTotal: Number(e.target.value||0)} : w));
-                      }} />
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        setWeeks((prev) =>
+                          prev.map((w, i) =>
+                            i === selectedIndex ? { ...w, declaredGrandTotal: Number.isFinite(value) ? value : 0 } : w
+                          )
+                        );
+                      }}
+                    />
                   </label>
+
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">Season (e.g. 2024)</span>
+                    <input
+                      type="number"
+                      className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      value={week.season}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        setWeeks((prev) =>
+                          prev.map((w, i) =>
+                            i === selectedIndex ? { ...w, season: Number.isFinite(value) ? value : w.season } : w
+                          )
+                        );
+                      }}
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="text-xs text-zinc-500">NFL Week #</span>
+                      <input
+                        type="number"
+                        className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                        value={week.weekNumber}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setWeeks((prev) =>
+                            prev.map((w, i) =>
+                              i === selectedIndex ? { ...w, weekNumber: Number.isFinite(value) ? value : w.weekNumber } : w
+                            )
+                          );
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-zinc-500">Season Phase</span>
+                      <select
+                        className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                        value={week.seasonType}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setWeeks((prev) =>
+                            prev.map((w, i) =>
+                              i === selectedIndex ? { ...w, seasonType: Number.isFinite(value) ? value : w.seasonType } : w
+                            )
+                          );
+                        }}
+                      >
+                        {SEASON_TYPES.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white/70 dark:bg-zinc-900/60 p-3 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => fetchScores()}
+                        disabled={syncing}
+                        className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-sm hover:bg-white/70 dark:hover:bg-zinc-800 disabled:opacity-60"
+                      >
+                        {syncing ? "Syncing…" : "Sync Live Scores"}
+                      </button>
+                      <label className="inline-flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+                        <input
+                          type="checkbox"
+                          className="rounded border border-zinc-300 dark:border-zinc-600"
+                          checked={autoRefresh}
+                          onChange={(e) => setAutoRefresh(e.target.checked)}
+                        />
+                        Auto refresh every 60s
+                      </label>
+                    </div>
+                    <div className="text-[11px] text-zinc-500">
+                      Source: ESPN public scoreboard API. Last sync:{" "}
+                      {week.lastFetchedUtc ? new Date(week.lastFetchedUtc).toLocaleString() : "never"}
+                    </div>
+                    {(week.lastWarnings || []).length > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                        <div className="font-semibold">Teams needing manual review</div>
+                        <ul className="mt-1 space-y-1">
+                          {week.lastWarnings.map((w, i) => (
+                            <li key={i}>• {w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
                   <label className="block">
                     <span className="text-xs text-zinc-500">Pre-Out (label:count, one per line)</span>
-                    <textarea className="mt-1 w-full min-h-[80px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
-                      defaultValue={week.preOut.map(p=>`${p.label}:${p.count}`).join("\n")}
-                      onBlur={(e)=>{
-                        const preOut = e.target.value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean)
-                          .map(l=>{ const [label,countRaw]=l.split(":"); return {label: (label||"Pre-Out").trim(), count: Number(countRaw||0)}; });
-                        setWeeks(weeks.map((w,i)=> i===selectedIndex ? {...w, preOut} : w));
-                      }}></textarea>
+                    <textarea
+                      className="mt-1 w-full min-h-[80px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      defaultValue={(week.preOut || []).map((p) => `${p.label}:${p.count}`).join("\n")}
+                      onBlur={(e) => {
+                        const preOut = e.target.value
+                          .split(/\r?\n/)
+                          .map((l) => l.trim())
+                          .filter(Boolean)
+                          .map((l) => {
+                            const [label, countRaw] = l.split(":");
+                            return {
+                              label: (label || "Pre-Out").trim(),
+                              count: Number.isFinite(Number(countRaw)) ? Number(countRaw) : 0,
+                            };
+                          });
+                        setWeeks((prev) =>
+                          prev.map((w, i) => (i === selectedIndex ? { ...w, preOut } : w))
+                        );
+                      }}
+                    ></textarea>
                   </label>
                 </div>
               </div>
@@ -297,17 +866,19 @@
               <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 p-5 shadow-sm">
                 <h3 className="font-semibold">Quick How-To</h3>
                 <ol className="mt-2 space-y-2 text-sm list-decimal list-inside text-zinc-600 dark:text-zinc-300">
-                  <li>Pick a week at the top (add Week 8 when ready).</li>
-                  <li>Paste your picks (Team,Count per line) or edit inline later.</li>
-                  <li>As games end, set each team to <span className="font-medium">Win</span>, <span className="font-medium">Lose</span>, or <span className="font-medium">Push</span>.</li>
-                  <li><span className="font-medium">Eliminated</span> and <span className="font-medium">Survivors</span> update live with a smooth countdown.</li>
-                  <li>Use Export/Import JSON for backups.</li>
+                  <li>Pick a week above (add the next week when ready).</li>
+                  <li>Paste your picks (Team,Count per line) or edit inline.</li>
+                  <li>Hit <span className="font-medium">Sync Live Scores</span> to pull ESPN results.</li>
+                  <li>Manual overrides still work — ties count as losses when syncing.</li>
+                  <li>Export/Import JSON for off-line backups between weeks.</li>
                 </ol>
               </div>
             </div>
           </div>
 
-          <div className="mt-10 text-center text-xs text-zinc-500">Built for your LMS pool • Dark mode supported • No external services required</div>
+          <div className="mt-10 text-center text-xs text-zinc-500">
+            Built for your LMS pool • Powered by ESPN live scores • Dark mode supported
+          </div>
         </div>
       );
     }
