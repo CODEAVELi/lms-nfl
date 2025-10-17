@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LMS NFL – Countdown</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="color-scheme" content="light dark" />
+  <style>
+    html,body { height:100%; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 text-zinc-900 dark:text-zinc-100">
+  <div id="root"></div>
+
+  <!-- React + Babel (so we can paste JSX without a build) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useMemo, useEffect, useRef } = React;
+
+    const RESULT = { Pending: "Pending", Win: "Win", Lose: "Lose", Push: "Push" };
+    const fmt = (n) => Number.isFinite(n) ? n.toLocaleString() : "0";
+
+    function useAnimatedNumber(value, duration = 600) {
+      const [display, setDisplay] = useState(value);
+      useEffect(() => {
+        const from = display, to = value, start = performance.now();
+        let raf;
+        const tick = (now) => {
+          const t = Math.min(1, (now - start) / duration);
+          const eased = 1 - Math.pow(1 - t, 3);
+          setDisplay(Math.round(from + (to - from) * eased));
+          if (t < 1) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+      }, [value]);
+      return display;
+    }
+
+    const DEFAULT_WEEK7 = {
+      name: "Week 7",
+      preOut: [
+        { label: "No Pick – Out", count: 5 },
+        { label: "Lions – Double – Out", count: 2 },
+        { label: "Broncos – Double – Out", count: 1 },
+        { label: "Steelers – Double – Out", count: 1 },
+      ],
+      teams: [
+        { team: "Chiefs", count: 463, result: RESULT.Pending },
+        { team: "Patriots", count: 210, result: RESULT.Pending },
+        { team: "Bears", count: 129, result: RESULT.Pending },
+        { team: "Broncos", count: 71, result: RESULT.Pending },
+        { team: "Packers", count: 46, result: RESULT.Pending },
+        { team: "Steelers", count: 19, result: RESULT.Pending },
+        { team: "Browns", count: 19, result: RESULT.Pending },
+        { team: "Panthers", count: 8, result: RESULT.Pending },
+        { team: "Seahawks", count: 7, result: RESULT.Pending },
+        { team: "Lions", count: 7, result: RESULT.Pending },
+        { team: "Jets", count: 3, result: RESULT.Pending },
+        { team: "Jaguars", count: 2, result: RESULT.Pending },
+        { team: "Cowboys", count: 1, result: RESULT.Pending },
+        { team: "Chargers", count: 1, result: RESULT.Pending },
+        { team: "49ers", count: 1, result: RESULT.Pending },
+        { team: "Vikings", count: 1, result: RESULT.Pending },
+      ],
+      declaredGrandTotal: 997,
+    };
+
+    const StatCard = ({ title, value, sub }) => (
+      <div className="rounded-2xl bg-white/70 dark:bg-zinc-900/60 backdrop-blur p-5 shadow-sm border border-zinc-200 dark:border-zinc-800">
+        <div className="text-sm text-zinc-500">{title}</div>
+        <div className="mt-1 text-3xl font-semibold tracking-tight">{fmt(value)}</div>
+        {sub !== undefined && <div className="mt-1 text-xs text-zinc-400">{sub}</div>}
+      </div>
+    );
+
+    const Pill = ({ active, children, onClick }) => (
+      <button onClick={onClick}
+        className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
+          active ? "bg-zinc-900 text-white border-zinc-900 shadow"
+                 : "bg-white/70 dark:bg-zinc-900/60 border-zinc-200 dark:border-zinc-800 hover:bg-white"
+        }`}>
+        {children}
+      </button>
+    );
+
+    const ResultBadge = ({ result }) => {
+      const map = {
+        [RESULT.Pending]: "bg-zinc-100 text-zinc-700 border-zinc-200",
+        [RESULT.Win]: "bg-green-100 text-green-800 border-green-200",
+        [RESULT.Lose]: "bg-red-100 text-red-800 border-red-200",
+        [RESULT.Push]: "bg-amber-100 text-amber-800 border-amber-200",
+      };
+      return <span className={`px-2 py-0.5 rounded-full text-xs border ${map[result]}`}>{result}</span>;
+    };
+
+    function App() {
+      const [weeks, setWeeks] = useState([DEFAULT_WEEK7]);
+      const [selectedIndex, setSelectedIndex] = useState(0);
+      const week = weeks[selectedIndex];
+
+      const sums = useMemo(() => {
+        const picksTotal = week.teams.reduce((a,t)=>a+(+t.count||0),0);
+        const preOutTotal = week.preOut.reduce((a,p)=>a+(+p.count||0),0);
+        const losers = week.teams.filter(t=>t.result===RESULT.Lose).reduce((a,t)=>a+(+t.count||0),0);
+        const eliminated = preOutTotal + losers;
+        const grandTotal = week.declaredGrandTotal || picksTotal + preOutTotal;
+        const survivors = Math.max(0, grandTotal - eliminated);
+        const pct = grandTotal>0 ? (eliminated/grandTotal)*100 : 0;
+        return { picksTotal, preOutTotal, losers, eliminated, survivors, pct, grandTotal };
+      }, [week]);
+
+      const animElim = useAnimatedNumber(sums.eliminated);
+      const animSurv = useAnimatedNumber(sums.survivors);
+
+      const setTeamResult = (teamName, result) => {
+        setWeeks(weeks.map((w,i)=> i!==selectedIndex ? w : {
+          ...w, teams: w.teams.map(t => t.team===teamName ? {...t, result} : t)
+        }));
+      };
+
+      const addWeek = (name=`Week ${weeks.length+1}`) => {
+        setWeeks(w => [...w, { name, preOut: [], teams: [], declaredGrandTotal: 0 }]);
+        setSelectedIndex(weeks.length);
+      };
+
+      const parseAndLoad = (text) => {
+        const parsed = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(line=>{
+          const [teamRaw, countRaw] = line.split(",");
+          const team = (teamRaw||"").trim();
+          const count = Number((countRaw||"").trim());
+          return { team, count: isNaN(count)?0:count, result: RESULT.Pending };
+        });
+        setWeeks(weeks.map((w,i)=> i!==selectedIndex ? w : { ...w, teams: parsed }));
+      };
+
+      const exportJSON = () => {
+        const blob = new Blob([JSON.stringify(weeks,null,2)], {type:"application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href=url; a.download="lms_weeks.json"; a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      const importJSON = (file) => {
+        const r = new FileReader();
+        r.onload = () => { try {
+          const parsed = JSON.parse(r.result);
+          if (Array.isArray(parsed)) setWeeks(parsed);
+        } catch { alert("Invalid JSON"); } };
+        r.readAsText(file);
+      };
+
+      return (
+        <div className="mx-auto max-w-7xl px-6 py-8">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Last Man Standing – NFL</h1>
+              <p className="text-sm text-zinc-500 mt-1">Live elimination tracker. Toggle results as games finish.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {weeks.map((w,i)=>(
+                <Pill key={i} active={i===selectedIndex} onClick={()=>setSelectedIndex(i)}>{w.name}</Pill>
+              ))}
+              <button onClick={()=>addWeek()}
+                className="px-3 py-1.5 rounded-full text-sm border border-zinc-300 dark:border-zinc-700 hover:bg-white/70 dark:hover:bg-zinc-800">+ Add Week</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+            <StatCard title="Grand Total" value={sums.grandTotal} sub="Entries at week lock" />
+            <StatCard title="Pre-Eliminated" value={sums.preOutTotal} sub="No pick + Double-Out" />
+            <StatCard title="Eliminated (Live)" value={animElim} sub={fmt(sums.losers) + " from losses"} />
+            <StatCard title="Survivors" value={animSurv} sub={`${(100 - sums.pct).toFixed(1)}% remaining`} />
+          </div>
+
+          <div className="mt-4">
+            <div className="h-3 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+              <div className="h-full bg-red-500 transition-all" style={{width: `${Math.min(100, sums.pct).toFixed(2)}%`}}></div>
+            </div>
+            <div className="text-xs mt-1 text-zinc-500">{sums.pct.toFixed(1)}% eliminated</div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
+            <div className="lg:col-span-2">
+              <div className="rounded-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-sm bg-white/80 dark:bg-zinc-900/60">
+                <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Picks ({week.name})</h2>
+                  <div className="text-xs text-zinc-500">Click a team to set result</div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left bg-zinc-50/60 dark:bg-zinc-900/40">
+                        <th className="px-4 py-3">Team</th>
+                        <th className="px-4 py-3">Picks</th>
+                        <th className="px-4 py-3">Result</th>
+                        <th className="px-4 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {week.teams.map((t, idx)=>(
+                        <tr key={t.team+idx}
+                            className={`border-t border-zinc-100 dark:border-zinc-800 ${
+                              t.result===RESULT.Lose ? "bg-red-50/60 dark:bg-red-950/20"
+                              : t.result===RESULT.Win ? "bg-green-50/50 dark:bg-green-950/10"
+                              : t.result===RESULT.Push ? "bg-amber-50/50 dark:bg-amber-950/10" : ""
+                            }`}>
+                          <td className="px-4 py-3 font-medium">{t.team}</td>
+                          <td className="px-4 py-3 tabular-nums">{fmt(t.count)}</td>
+                          <td className="px-4 py-3"><ResultBadge result={t.result} /></td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              {[RESULT.Win, RESULT.Lose, RESULT.Push, RESULT.Pending].map(r=>(
+                                <button key={r} onClick={()=>setTeamResult(t.team, r)}
+                                  className={`px-2.5 py-1 rounded-md text-xs border transition ${
+                                    r===t.result ? "bg-zinc-900 text-white border-zinc-900"
+                                                 : "bg-white/70 dark:bg-zinc-900/60 border-zinc-300 dark:border-zinc-700 hover:bg-white"
+                                  }`}>{r}</button>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="px-5 py-4 border-t border-zinc-200 dark:border-zinc-800">
+                  <h3 className="font-semibold mb-2">Already Out</h3>
+                  <ul className="space-y-1 text-sm">
+                    {week.preOut.map((p,i)=>(
+                      <li key={i} className="flex items-center justify-between">
+                        <span className="text-zinc-500">{p.label}</span>
+                        <span className="font-medium tabular-nums">{fmt(p.count)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 p-5 shadow-sm">
+                <h3 className="font-semibold">Manage Weeks & Picks</h3>
+                <div className="mt-3 space-y-3 text-sm">
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">Rename current week</span>
+                    <input className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      value={week.name}
+                      onChange={(e)=>{
+                        setWeeks(weeks.map((w,i)=> i===selectedIndex ? {...w, name:e.target.value} : w));
+                      }} />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={()=>addWeek("Week "+(weeks.length+1))}
+                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 hover:bg-white/70 dark:hover:bg-zinc-800">+ New Week</button>
+                    <button onClick={exportJSON}
+                      className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-3 py-2 hover:bg-white/70 dark:hover:bg-zinc-800">Export JSON</button>
+                  </div>
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">Import JSON (export format)</span>
+                    <input type="file" accept="application/json" className="mt-1 w-full text-xs"
+                      onChange={(e)=> e.target.files?.[0] && importJSON(e.target.files[0])} />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">Paste teams (Team,Count per line)</span>
+                    <textarea className="mt-1 w-full min-h-[120px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      placeholder={"Patriots,210\nChiefs,463"}
+                      onBlur={(e)=>{ if(e.target.value.trim()){ parseAndLoad(e.target.value); e.target.value=""; } }}></textarea>
+                    <div className="text-[11px] text-zinc-500 mt-1">Tip: switch to Week 8 above, paste your new picks, and you’re set.</div>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">Grand Total (optional – defaults to picks + pre-out)</span>
+                    <input type="number" className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      value={week.declaredGrandTotal}
+                      onChange={(e)=>{
+                        setWeeks(weeks.map((w,i)=> i===selectedIndex ? {...w, declaredGrandTotal: Number(e.target.value||0)} : w));
+                      }} />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-zinc-500">Pre-Out (label:count, one per line)</span>
+                    <textarea className="mt-1 w-full min-h-[80px] rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent px-3 py-2"
+                      defaultValue={week.preOut.map(p=>`${p.label}:${p.count}`).join("\n")}
+                      onBlur={(e)=>{
+                        const preOut = e.target.value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean)
+                          .map(l=>{ const [label,countRaw]=l.split(":"); return {label: (label||"Pre-Out").trim(), count: Number(countRaw||0)}; });
+                        setWeeks(weeks.map((w,i)=> i===selectedIndex ? {...w, preOut} : w));
+                      }}></textarea>
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/60 p-5 shadow-sm">
+                <h3 className="font-semibold">Quick How-To</h3>
+                <ol className="mt-2 space-y-2 text-sm list-decimal list-inside text-zinc-600 dark:text-zinc-300">
+                  <li>Pick a week at the top (add Week 8 when ready).</li>
+                  <li>Paste your picks (Team,Count per line) or edit inline later.</li>
+                  <li>As games end, set each team to <span className="font-medium">Win</span>, <span className="font-medium">Lose</span>, or <span className="font-medium">Push</span>.</li>
+                  <li><span className="font-medium">Eliminated</span> and <span className="font-medium">Survivors</span> update live with a smooth countdown.</li>
+                  <li>Use Export/Import JSON for backups.</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-10 text-center text-xs text-zinc-500">Built for your LMS pool • Dark mode supported • No external services required</div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
