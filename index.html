@@ -41,6 +41,8 @@
     html,body { height:100%; }
     :root {
       --tecmo-navy: #0b1021;
+      --tecmo-background: #121a36;
+      --tecmo-surface: #0a0f1f;
       --tecmo-blue: #0d6cf2;
       --tecmo-green: #3cbc0d;
       --tecmo-gold: #f8b800;
@@ -50,15 +52,15 @@
       --tecmo-outline: #0b1021;
     }
     body.tecmo {
-      background-color: var(--tecmo-navy);
+      background-color: var(--tecmo-background);
       color: var(--tecmo-white);
     }
     /* Subtle pixel grid + blue wash */
     .grid-bg {
+      background-color: var(--tecmo-background);
       background-image:
-        repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 8px),
-        repeating-linear-gradient(90deg, rgba(255,255,255,0.04) 0, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 8px),
-        linear-gradient(180deg, rgba(13,108,242,0.08), transparent);
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 8px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 8px);
     }
     .pixel-font { font-family: "Press Start 2P", ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.5px; }
     .pixel-mono { font-family: "VT323", ui-monospace, SFMono-Regular, monospace; font-size: 1.05rem; }
@@ -67,10 +69,17 @@
     .team-logo img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
     .team-chip { width: 20px; height: 16px; border: 2px solid var(--tecmo-white); background: #0e142a; color: var(--tecmo-white); box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15); display: inline-flex; align-items: center; justify-content: center; font-family: "Press Start 2P", ui-sans-serif, system-ui, sans-serif; font-size: 9px; line-height: 1; }
     .panel-8bit {
-      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.06));
+      --panel-fill: var(--tecmo-surface);
+      --panel-overlay: transparent;
+      background-color: var(--panel-fill);
+      background-image: linear-gradient(var(--panel-overlay), var(--panel-overlay));
       border: 2px solid var(--tecmo-white);
       box-shadow: 0 0 0 2px var(--tecmo-shadow), inset 0 0 0 1px rgba(255,255,255,0.15);
     }
+    .panel-8bit.notice-error { --panel-overlay: rgba(228,0,88,0.28); }
+    .panel-8bit.notice-warn { --panel-overlay: rgba(248,184,0,0.22); }
+    .panel-8bit.notice-success { --panel-overlay: rgba(60,188,13,0.22); }
+    .panel-8bit.notice-info { --panel-overlay: rgba(13,108,242,0.22); }
     .btn-8bit {
       border: 2px solid var(--tecmo-white);
       background-color: var(--tecmo-blue);
@@ -111,14 +120,14 @@
     .badge-lose { background: var(--tecmo-red); color: #ffe6ef; }
     .badge-push { background: var(--tecmo-gold); color: #1a1400; }
     .table-8bit th, .table-8bit td { border-top: 2px solid rgba(255,255,255,0.12); }
-    .table-8bit thead th { background: rgba(255,255,255,0.06); border-bottom: 2px solid rgba(255,255,255,0.2); }
+    .table-8bit thead th { background: rgba(255,255,255,0.08); border-bottom: 2px solid rgba(255,255,255,0.18); }
     .table-row-win { background: rgba(60,188,13,0.08); }
     .table-row-lose { background: rgba(228,0,88,0.08); }
     .table-row-push { background: rgba(248,184,0,0.08); }
     /* Scoreboard */
     .scoreboard {
       border: 3px solid var(--tecmo-white);
-      background: linear-gradient(180deg, #0a0f1f, #121a36);
+      background-color: var(--tecmo-surface);
       box-shadow: 0 0 0 3px var(--tecmo-shadow), inset 0 0 0 2px rgba(255,255,255,0.12);
       color: var(--tecmo-white);
     }
@@ -809,10 +818,12 @@
             <div
               className={`mt-6 panel-8bit px-4 py-3 text-sm ${
                 syncNotice.type === "error"
-                  ? "bg-[rgba(228,0,88,0.15)]"
+                  ? "notice-error"
                   : syncNotice.type === "warn"
-                  ? "bg-[rgba(248,184,0,0.15)]"
-                  : "bg-[rgba(60,188,13,0.15)]"
+                  ? "notice-warn"
+                  : syncNotice.type === "success"
+                  ? "notice-success"
+                  : "notice-info"
               }`}
             >
               {syncNotice.text}
@@ -1057,7 +1068,7 @@
                       {week.lastFetchedUtc ? new Date(week.lastFetchedUtc).toLocaleString() : "never"}
                     </div>
                     {(week.lastWarnings || []).length > 0 && (
-                      <div className="panel-8bit bg-[rgba(248,184,0,0.12)] px-3 py-2 text-[11px]">
+                      <div className="panel-8bit notice-warn px-3 py-2 text-[11px]">
                         <div className="pixel-font text-[11px]">Teams needing manual review</div>
                         <ul className="mt-1 space-y-1">
                           {week.lastWarnings.map((w, i) => (
