@@ -271,36 +271,29 @@
       };
     }
 
-    const DEFAULT_WEEK7 = normalizeWeek({
-      name: "Week 7",
+    const DEFAULT_WEEK8 = normalizeWeek({
+      name: "Week 8",
       season: getDefaultSeason(),
       seasonType: 2,
-      weekNumber: 7,
+      weekNumber: 8,
       preOut: [
-        { label: "No Pick – Out", count: 5 },
-        { label: "Lions – Double – Out", count: 2 },
-        { label: "Broncos – Double – Out", count: 1 },
-        { label: "Steelers – Double – Out", count: 1 },
+        { label: "Late Pick – Out", count: 7 },
+        { label: "No Pick – Out", count: 3 },
+        { label: "Chiefs – Twice Out", count: 1 },
       ],
       teams: [
-        { team: "Chiefs", count: 463, result: RESULT.Pending },
-        { team: "Patriots", count: 210, result: RESULT.Pending },
-        { team: "Bears", count: 129, result: RESULT.Pending },
-        { team: "Broncos", count: 71, result: RESULT.Pending },
-        { team: "Packers", count: 46, result: RESULT.Pending },
-        { team: "Steelers", count: 19, result: RESULT.Pending },
-        { team: "Browns", count: 19, result: RESULT.Pending },
-        { team: "Panthers", count: 8, result: RESULT.Pending },
-        { team: "Seahawks", count: 7, result: RESULT.Pending },
-        { team: "Lions", count: 7, result: RESULT.Pending },
-        { team: "Jets", count: 3, result: RESULT.Pending },
-        { team: "Jaguars", count: 2, result: RESULT.Pending },
-        { team: "Cowboys", count: 1, result: RESULT.Pending },
-        { team: "Chargers", count: 1, result: RESULT.Pending },
-        { team: "49ers", count: 1, result: RESULT.Pending },
-        { team: "Vikings", count: 1, result: RESULT.Pending },
+        { team: "Colts", count: 345, result: RESULT.Pending },
+        { team: "Falcons", count: 205, result: RESULT.Pending },
+        { team: "Bengals", count: 143, result: RESULT.Pending },
+        { team: "Eagles", count: 74, result: RESULT.Pending },
+        { team: "Patriots", count: 71, result: RESULT.Pending },
+        { team: "Chiefs", count: 68, result: RESULT.Pending },
+        { team: "Bills", count: 22, result: RESULT.Pending },
+        { team: "Bucs", count: 13, result: RESULT.Pending },
+        { team: "Ravens", count: 7, result: RESULT.Pending },
+        { team: "Chargers", count: 3, result: RESULT.Pending },
       ],
-      declaredGrandTotal: 997,
+      declaredGrandTotal: 962,
     });
 
     function loadInitialWeeks() {
@@ -317,7 +310,7 @@
           console.warn("Could not load stored LMS weeks");
         }
       }
-      return [DEFAULT_WEEK7];
+      return [DEFAULT_WEEK8];
     }
 
     function aliasForTeam(name) {
@@ -460,7 +453,7 @@
         return stored === "true";
       });
 
-      const week = weeks[selectedIndex] || weeks[0] || DEFAULT_WEEK7;
+      const week = weeks[selectedIndex] || weeks[0] || DEFAULT_WEEK8;
 
       useEffect(() => {
         if (typeof window === "undefined") return;
