@@ -263,6 +263,7 @@
       const declared = Number(week.declaredGrandTotal);
       return {
         name: week.name || "Week",
+        templateFingerprint: typeof week.templateFingerprint === "string" ? week.templateFingerprint : null,
         preOut: Array.isArray(week.preOut)
           ? week.preOut.map((p) => ({
               label: (p.label || "Pre-Out").trim(),
@@ -280,7 +281,41 @@
       };
     }
 
-    const DEFAULT_WEEK9 = normalizeWeek({
+    function weekIdentityKey(week = {}) {
+      const season = Number.isFinite(Number(week.season)) ? Number(week.season) : getDefaultSeason();
+      const seasonType = Number.isFinite(Number(week.seasonType)) ? Number(week.seasonType) : 2;
+      const weekNumber = Number.isFinite(Number(week.weekNumber)) ? Number(week.weekNumber) : 1;
+      return `${season}-${seasonType}-${weekNumber}`;
+    }
+
+    function fingerprintForWeekTemplate(week = {}) {
+      const preOutPart = (week.preOut || [])
+        .map((p) => `${p.label}::${Number.isFinite(Number(p.count)) ? Number(p.count) : 0}`)
+        .join("|");
+      const teamPart = (week.teams || [])
+        .map((t) => `${t.team}::${Number.isFinite(Number(t.count)) ? Number(t.count) : 0}`)
+        .join("|");
+      return `${weekIdentityKey(week)}::${preOutPart}::${teamPart}`;
+    }
+
+    function createWeekTemplate(definition = {}) {
+      const normalized = normalizeWeek(definition);
+      return {
+        ...normalized,
+        templateFingerprint: fingerprintForWeekTemplate(normalized),
+      };
+    }
+
+    function cloneWeek(week = {}) {
+      return {
+        ...week,
+        preOut: (week.preOut || []).map((p) => ({ ...p })),
+        teams: (week.teams || []).map((t) => ({ ...t })),
+        lastWarnings: Array.isArray(week.lastWarnings) ? [...week.lastWarnings] : [],
+      };
+    }
+
+    const DEFAULT_WEEK9 = createWeekTemplate({
       name: "Week 9",
       season: getDefaultSeason(),
       seasonType: 2,
@@ -303,6 +338,48 @@
       declaredGrandTotal: 603,
     });
 
+    const DEFAULT_WEEKS = [DEFAULT_WEEK9];
+
+    // Ensures stored data is upgraded with fresh default templates when week payloads change.
+    function mergeStoredWeeksWithDefaults(storedWeeks = []) {
+      const defaults = DEFAULT_WEEKS || [];
+      const map = new Map();
+      (storedWeeks || []).forEach((week) => {
+        const normalized = normalizeWeek(week);
+        map.set(weekIdentityKey(normalized), normalized);
+      });
+
+      const merged = [];
+
+      defaults.forEach((template) => {
+        const key = weekIdentityKey(template);
+        const existing = map.get(key);
+        if (!existing) {
+          merged.push(cloneWeek(template));
+          return;
+        }
+        const ensuredFingerprint =
+          typeof existing.templateFingerprint === "string"
+            ? existing.templateFingerprint
+            : fingerprintForWeekTemplate(existing);
+        if (ensuredFingerprint !== template.templateFingerprint) {
+          merged.push(cloneWeek(template));
+        } else {
+          if (ensuredFingerprint !== existing.templateFingerprint) {
+            existing.templateFingerprint = ensuredFingerprint;
+          }
+          merged.push(existing);
+        }
+        map.delete(key);
+      });
+
+      map.forEach((week) => {
+        merged.push(week);
+      });
+
+      return merged.length ? merged : defaults.map(cloneWeek);
+    }
+
     function loadInitialWeeks() {
       if (typeof window !== "undefined") {
         try {
@@ -310,14 +387,17 @@
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length) {
-              return parsed.map(normalizeWeek);
+              return mergeStoredWeeksWithDefaults(parsed);
+            }
+            if (parsed && typeof parsed === "object" && Array.isArray(parsed.weeks) && parsed.weeks.length) {
+              return mergeStoredWeeksWithDefaults(parsed.weeks);
             }
           }
         } catch (_) {
           console.warn("Could not load stored LMS weeks");
         }
       }
-      return [DEFAULT_WEEK9];
+      return DEFAULT_WEEKS.map(cloneWeek);
     }
 
     function aliasForTeam(name) {
