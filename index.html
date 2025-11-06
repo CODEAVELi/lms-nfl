@@ -235,6 +235,15 @@
     }, {});
 
     const fmt = (n) => Number.isFinite(n) ? n.toLocaleString() : "0";
+    const PACIFIC_TZ = "America/Los_Angeles";
+
+    // Forces all displayed kickoff and sync timestamps into Pacific Time.
+    function formatPacific(value, options = {}) {
+      if (!value) return "";
+      const dt = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(dt.getTime())) return "";
+      return new Intl.DateTimeFormat([], { timeZone: PACIFIC_TZ, ...options }).format(dt);
+    }
 
     function getDefaultSeason() {
       const now = new Date();
@@ -431,10 +440,13 @@
     }
 
     function formatGameTime(iso) {
-      if (!iso) return "";
-      const dt = new Date(iso);
-      if (Number.isNaN(dt.getTime())) return "";
-      return dt.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      return formatPacific(iso, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      });
     }
 
     function finalResultFromScores(usScore, themScore) {
@@ -831,7 +843,16 @@
               </div>
               <div className="text-right">
                 <div className="pixel-font text-[10px] sm:text-xs">Last Sync</div>
-                <div className="pixel-mono">{week.lastFetchedUtc ? new Date(week.lastFetchedUtc).toLocaleTimeString() : "—"}</div>
+                <div className="pixel-mono">
+                  {week.lastFetchedUtc
+                    ? formatPacific(week.lastFetchedUtc, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        timeZoneName: "short",
+                      })
+                    : "—"}
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
@@ -1143,7 +1164,16 @@
                     </div>
                     <div className="helper-8bit">
                       Source: ESPN public scoreboard API. Last sync:{" "}
-                      {week.lastFetchedUtc ? new Date(week.lastFetchedUtc).toLocaleString() : "never"}
+                      {week.lastFetchedUtc
+                        ? formatPacific(week.lastFetchedUtc, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                            second: "2-digit",
+                            timeZoneName: "short",
+                          })
+                        : "never"}
                     </div>
                     {(week.lastWarnings || []).length > 0 && (
                       <div className="panel-8bit notice-warn px-3 py-2 text-[11px]">
