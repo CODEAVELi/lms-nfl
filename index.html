@@ -629,6 +629,14 @@
                 const completed = Boolean(status.completed || state === "post");
                 const usScore = Number(info.competitor?.score);
                 const themScore = Number(opponent?.score);
+                const kickoffText = formatGameTime(info.date);
+
+                let statusText = info.statusText;
+                if (state === "pre") {
+                  statusText = kickoffText || "Upcoming";
+                } else if (!statusText && kickoffText) {
+                  statusText = kickoffText;
+                }
 
                 let result = team.result;
                 if (completed && Number.isFinite(usScore) && Number.isFinite(themScore)) {
@@ -649,7 +657,7 @@
                     teamScore: Number.isFinite(usScore) ? usScore : null,
                     opponentScore: Number.isFinite(themScore) ? themScore : null,
                     state,
-                    statusText: info.statusText,
+                    statusText,
                     kickoff: info.date,
                     homeAway: info.competitor?.homeAway,
                     completed,
