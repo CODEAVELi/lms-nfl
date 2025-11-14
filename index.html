@@ -351,7 +351,32 @@
       declaredGrandTotal: 466,
     });
 
-    const DEFAULT_WEEKS = [DEFAULT_WEEK10];
+    const DEFAULT_WEEK11 = createWeekTemplate({
+      name: "Week 11",
+      season: getDefaultSeason(),
+      seasonType: 2,
+      weekNumber: 11,
+      preOut: [
+        { label: "Late Pick – Out", count: 1 },
+        { label: "Patriots Twice – Out", count: 1 },
+      ],
+      teams: [
+        { team: "Patriots", count: 114, result: RESULT.Pending },
+        { team: "Ravens", count: 50, result: RESULT.Pending },
+        { team: "Texans", count: 33, result: RESULT.Pending },
+        { team: "Packers", count: 15, result: RESULT.Pending },
+        { team: "Cowboys", count: 15, result: RESULT.Pending },
+        { team: "Steelers", count: 11, result: RESULT.Pending },
+        { team: "Falcons", count: 9, result: RESULT.Pending },
+        { team: "49ers", count: 7, result: RESULT.Pending },
+        { team: "Vikings", count: 2, result: RESULT.Pending },
+        { team: "Bills", count: 2, result: RESULT.Pending },
+        { team: "Chiefs", count: 1, result: RESULT.Pending },
+      ],
+      declaredGrandTotal: 261,
+    });
+
+    const DEFAULT_WEEKS = [DEFAULT_WEEK11, DEFAULT_WEEK10];
 
     // Ensures stored data is upgraded with fresh default templates when week payloads change.
     function mergeStoredWeeksWithDefaults(storedWeeks = []) {
@@ -556,7 +581,7 @@
         return stored === "true";
       });
 
-      const week = weeks[selectedIndex] || weeks[0] || DEFAULT_WEEK10;
+      const week = weeks[selectedIndex] || weeks[0] || DEFAULT_WEEKS[0] || DEFAULT_WEEK10;
 
       useEffect(() => {
         if (typeof window === "undefined") return;
