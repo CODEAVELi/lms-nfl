@@ -390,6 +390,31 @@
       };
     }
 
+    const DEFAULT_WEEK12 = createWeekTemplate({
+      name: "Week 12",
+      season: getDefaultSeason(),
+      seasonType: 2,
+      weekNumber: 12,
+      preOut: [],
+      teams: [
+        { team: "Ravens", count: 82, result: RESULT.Pending },
+        { team: "49ers", count: 68, result: RESULT.Pending },
+        { team: "Seahawks", count: 59, result: RESULT.Pending },
+        { team: "Lions", count: 12, result: RESULT.Pending },
+        { team: "Patriots", count: 6, result: RESULT.Pending },
+        { team: "Jaguars", count: 5, result: RESULT.Pending },
+        { team: "Packers", count: 3, result: RESULT.Pending },
+        { team: "Raiders", count: 3, result: RESULT.Pending },
+        { team: "Eagles", count: 2, result: RESULT.Pending },
+        { team: "Bills", count: 2, result: RESULT.Pending },
+        { team: "Rams", count: 2, result: RESULT.Pending },
+        { team: "Bears", count: 1, result: RESULT.Pending },
+        { team: "Cowboys", count: 1, result: RESULT.Pending },
+        { team: "Saints", count: 1, result: RESULT.Pending },
+      ],
+      declaredGrandTotal: 247,
+    });
+
     const DEFAULT_WEEK10 = createWeekTemplate({
       name: "Week 10",
       season: getDefaultSeason(),
@@ -442,7 +467,7 @@
       declaredGrandTotal: 261,
     });
 
-    const DEFAULT_WEEKS = [DEFAULT_WEEK11, DEFAULT_WEEK10];
+    const DEFAULT_WEEKS = [DEFAULT_WEEK12, DEFAULT_WEEK11, DEFAULT_WEEK10];
 
     // Ensures stored data is upgraded with fresh default templates when week payloads change.
     function mergeStoredWeeksWithDefaults(storedWeeks = []) {
