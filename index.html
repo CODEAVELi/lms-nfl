@@ -125,20 +125,22 @@
     .badge-push { background: var(--tecmo-gold); color: #1a1400; }
     .table-8bit th, .table-8bit td { border-top: 2px solid rgba(255,255,255,0.12); }
     .table-8bit thead th {
-      background: rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, rgba(10,15,31,0.95), rgba(10,15,31,0.92));
       border-bottom: 2px solid rgba(255,255,255,0.18);
       position: sticky;
       top: 0;
-      z-index: 10;
+      z-index: 20;
+      backdrop-filter: blur(6px);
     }
     .table-8bit tbody tr:hover td { background: rgba(255,255,255,0.03); }
     .table-8bit td:first-child, .table-8bit th:first-child {
       position: sticky;
       left: 0;
       z-index: 15;
-      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.08)), var(--tecmo-surface);
-      box-shadow: 4px 0 0 rgba(0,0,0,0.25);
+      background: linear-gradient(180deg, rgba(10,15,31,0.92), rgba(10,15,31,0.92));
+      box-shadow: 4px 0 0 rgba(0,0,0,0.35);
     }
+    .table-8bit thead th:first-child { z-index: 30; }
     .table-row-win { box-shadow: inset 4px 0 0 0 var(--tecmo-green); }
     .table-row-lose { box-shadow: inset 4px 0 0 0 var(--tecmo-red); }
     .table-row-push { box-shadow: inset 4px 0 0 0 var(--tecmo-gold); }
@@ -216,7 +218,7 @@
       backdrop-filter: blur(8px);
       background: linear-gradient(180deg, rgba(11,16,33,0.92), rgba(11,16,33,0.82));
     }
-    .table-scroll { max-height: 520px; overflow: auto; }
+    .table-scroll { max-height: 520px; overflow: auto; position: relative; }
     /* Inputs */
     .input-8bit, .select-8bit, .textarea-8bit {
       background: #0e142a; color: var(--tecmo-white);
