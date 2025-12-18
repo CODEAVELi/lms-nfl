@@ -301,6 +301,12 @@
       });
       return acc;
     }, {});
+    const TEAM_DISPLAY = TEAM_CATALOG.reduce((acc, { abbr, names }) => {
+      const key = (abbr || "").toUpperCase();
+      if (!key) return acc;
+      acc[key] = Array.isArray(names) && names.length ? names[0] : key;
+      return acc;
+    }, {});
 
     const fmt = (n) => Number.isFinite(n) ? n.toLocaleString() : "0";
     const PACIFIC_TZ = "America/Los_Angeles";
@@ -336,6 +342,14 @@
       };
     }
 
+    function normalizeEntry(entry = {}) {
+      return {
+        name: (entry.name || "").trim(),
+        pick1: (entry.pick1 || entry.pick || "").trim(),
+        pick2: (entry.pick2 || "").trim(),
+      };
+    }
+
     function normalizeWeek(week = {}) {
       const declared = Number(week.declaredGrandTotal);
       return {
@@ -348,6 +362,7 @@
             }))
           : [],
         teams: Array.isArray(week.teams) ? week.teams.map(normalizeTeam) : [],
+        entries: Array.isArray(week.entries) ? week.entries.map(normalizeEntry) : [],
         declaredGrandTotal: Number.isFinite(declared) ? declared : 0,
         season: Number.isFinite(Number(week.season)) ? Number(week.season) : getDefaultSeason(),
         weekNumber: Number.isFinite(Number(week.weekNumber)) ? Number(week.weekNumber) : 1,
@@ -388,9 +403,70 @@
         ...week,
         preOut: (week.preOut || []).map((p) => ({ ...p })),
         teams: (week.teams || []).map((t) => ({ ...t })),
+        entries: (week.entries || []).map((e) => ({ ...e })),
         lastWarnings: Array.isArray(week.lastWarnings) ? [...week.lastWarnings] : [],
       };
     }
+
+    const DEFAULT_WEEK16 = createWeekTemplate({
+      name: "Week 16",
+      season: getDefaultSeason(),
+      seasonType: 2,
+      weekNumber: 16,
+      preOut: [],
+      teams: [
+        { team: "Texans", count: 23, result: RESULT.Pending },
+        { team: "Eagles", count: 18, result: RESULT.Pending },
+        { team: "Saints", count: 11, result: RESULT.Pending },
+        { team: "49ers", count: 5, result: RESULT.Pending },
+        { team: "Bengals", count: 3, result: RESULT.Pending },
+        { team: "Bills", count: 3, result: RESULT.Pending },
+        { team: "Vikings", count: 3, result: RESULT.Pending },
+        { team: "Chiefs", count: 3, result: RESULT.Pending },
+        { team: "Cardinals", count: 1, result: RESULT.Pending },
+        { team: "Bears", count: 1, result: RESULT.Pending },
+        { team: "Bucs", count: 1, result: RESULT.Pending },
+      ],
+      entries: [
+        { name: "Aren G 5", pick1: "Texans", pick2: "Bengals" },
+        { name: "Armen Mac 50 30", pick1: "Texans", pick2: "Eagles" },
+        { name: "Arvin A 9", pick1: "49ers", pick2: "Eagles" },
+        { name: "Bedig Packers 11", pick1: "Texans", pick2: "Eagles" },
+        { name: "Diesel 1", pick1: "Texans", pick2: "Saints" },
+        { name: "Don Nak 2", pick1: "Saints", pick2: "Vikings" },
+        { name: "D Shah 3", pick1: "Texans", pick2: "Bengals" },
+        { name: "D Shah 4", pick1: "Bills", pick2: "Saints" },
+        { name: "Edmond Kesh Mush 20", pick1: "Eagles", pick2: "Saints" },
+        { name: "Ed Oh 4", pick1: "Eagles", pick2: "49ers" },
+        { name: "Ed Oh 12", pick1: "Texans", pick2: "Bills" },
+        { name: "Edvin Vici 2", pick1: "Texans", pick2: "49ers" },
+        { name: "Fuller 6", pick1: "Eagles", pick2: "Saints" },
+        { name: "Emil G 7", pick1: "Texans", pick2: "Saints" },
+        { name: "Emin Mikael 2", pick1: "Texans", pick2: "Eagles" },
+        { name: "Fred Ros 8", pick1: "Texans", pick2: "Cardinals" },
+        { name: "Gabriel 2", pick1: "Texans", pick2: "Saints" },
+        { name: "Harout Oh 8", pick1: "Texans", pick2: "Eagles" },
+        { name: "Harout Oh 11", pick1: "Vikings", pick2: "Saints" },
+        { name: "Harout Oh 12", pick1: "49ers", pick2: "Chiefs" },
+        { name: "Harout Tom 4", pick1: "Eagles", pick2: "Vikings" },
+        { name: "Hovaness Ter 1", pick1: "Texans", pick2: "Chiefs" },
+        { name: "Hrag 2", pick1: "Texans", pick2: "Eagles" },
+        { name: "Ishkhan 7", pick1: "Eagles", pick2: "49ers" },
+        { name: "John Keh 1", pick1: "Eagles", pick2: "Saints" },
+        { name: "Labib 21", pick1: "Texans", pick2: "Bears" },
+        { name: "Mikael 3", pick1: "Texans", pick2: "Eagles" },
+        { name: "Mike B 5", pick1: "Texans", pick2: "Eagles" },
+        { name: "Nick Caddy Daddy 1", pick1: "Texans", pick2: "Eagles" },
+        { name: "Sarmen Cash 9", pick1: "Eagles", pick2: "Saints" },
+        { name: "Henry", pick1: "Texans", pick2: "Eagles" },
+        { name: "Silky 18", pick1: "Texans", pick2: "Saints" },
+        { name: "Silky 29", pick1: "Bucs", pick2: "Texans" },
+        { name: "Spencer B 2", pick1: "Texans", pick2: "Chiefs" },
+        { name: "VikesG63 3", pick1: "Texans", pick2: "Bengals" },
+        { name: "Zorch 2", pick1: "Bills", pick2: "Eagles" },
+      ],
+      declaredGrandTotal: 36,
+    });
 
     const DEFAULT_WEEK15 = createWeekTemplate({
       name: "Week 15",
@@ -531,7 +607,7 @@
       declaredGrandTotal: 261,
     });
 
-    const DEFAULT_WEEKS = [DEFAULT_WEEK15, DEFAULT_WEEK14, DEFAULT_WEEK13, DEFAULT_WEEK12, DEFAULT_WEEK11];
+    const DEFAULT_WEEKS = [DEFAULT_WEEK16, DEFAULT_WEEK15, DEFAULT_WEEK14, DEFAULT_WEEK13, DEFAULT_WEEK12, DEFAULT_WEEK11];
 
     // Ensures stored data is upgraded with fresh default templates when week payloads change.
     function mergeStoredWeeksWithDefaults(storedWeeks = []) {
@@ -596,6 +672,51 @@
     function aliasForTeam(name) {
       const key = (name || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
       return TEAM_ALIASES[key] || null;
+    }
+
+    function buildTeamsFromEntries(entries = [], existingTeams = []) {
+      const existingByAlias = new Map();
+      const existingByName = new Map();
+
+      (existingTeams || []).forEach((team) => {
+        const nameKey = (team.team || "").toUpperCase();
+        if (nameKey && !existingByName.has(nameKey)) {
+          existingByName.set(nameKey, team);
+        }
+        const alias = aliasForTeam(team.team);
+        if (alias && !existingByAlias.has(alias)) {
+          existingByAlias.set(alias, team);
+        }
+      });
+
+      const counts = new Map();
+
+      const addPick = (pickName) => {
+        const clean = (pickName || "").trim();
+        if (!clean) return;
+        const alias = aliasForTeam(clean);
+        const display = alias ? (TEAM_DISPLAY[alias] || clean) : clean;
+        const key = alias || display.toUpperCase();
+        const existing = counts.get(key);
+        if (existing) {
+          existing.count += 1;
+          return;
+        }
+        const snapshot = (alias && existingByAlias.get(alias)) || existingByName.get(display.toUpperCase());
+        counts.set(key, {
+          team: display,
+          count: 1,
+          result: snapshot?.result || RESULT.Pending,
+          live: snapshot?.live || null,
+        });
+      };
+
+      (entries || []).forEach((entry) => {
+        addPick(entry.pick1);
+        addPick(entry.pick2);
+      });
+
+      return Array.from(counts.values());
     }
 
     function buildScoreIndex(events = []) {
@@ -769,9 +890,14 @@
       const noticeTimeoutRef = useRef(null);
       const [sortMode, setSortMode] = useState("picks");
       const [statusFilter, setStatusFilter] = useState("all");
+      const [picksView, setPicksView] = useState("roster");
       const [pasteText, setPasteText] = useState("");
       const [pastePreview, setPastePreview] = useState([]);
       const [pasteUnknowns, setPasteUnknowns] = useState([]);
+      const [rosterText, setRosterText] = useState("");
+      const [rosterPreview, setRosterPreview] = useState([]);
+      const [rosterUnknowns, setRosterUnknowns] = useState([]);
+      const [syncRosterTotals, setSyncRosterTotals] = useState(true);
       const [manageOpen, setManageOpen] = useState(() => {
         if (typeof window === "undefined") return true;
         return window.innerWidth >= 768;
@@ -805,6 +931,8 @@
       useEffect(() => {
         setPastePreview([]);
         setPasteUnknowns([]);
+        setRosterPreview([]);
+        setRosterUnknowns([]);
       }, [selectedIndex]);
 
       const clearNotice = useCallback(() => {
@@ -969,6 +1097,44 @@
       const animElim = useAnimatedNumber(sums.eliminated);
       const animSurv = useAnimatedNumber(sums.survivors);
 
+      const teamLookup = useMemo(() => {
+        const map = new Map();
+        (week?.teams || []).forEach((team) => {
+          const alias = aliasForTeam(team.team);
+          if (alias && !map.has(alias)) {
+            map.set(alias, team);
+            return;
+          }
+          const key = (team.team || "").toUpperCase();
+          if (key && !map.has(key)) {
+            map.set(key, team);
+          }
+        });
+        return map;
+      }, [week]);
+
+      const rosterStats = useMemo(() => {
+        const entries = week?.entries || [];
+        let picks = 0;
+        let hasSecondPick = false;
+        entries.forEach((entry) => {
+          if (entry.pick1) picks += 1;
+          if (entry.pick2) {
+            picks += 1;
+            hasSecondPick = true;
+          }
+        });
+        return { entries: entries.length, picks, hasSecondPick };
+      }, [week]);
+
+      const hasRoster = rosterStats.entries > 0;
+
+      useEffect(() => {
+        if (!hasRoster && picksView === "roster") {
+          setPicksView("teams");
+        }
+      }, [hasRoster, picksView]);
+
       const setTeamResult = (teamName, result) => {
         const nextResult = normalizedResult(result);
         setWeeks((prev) =>
@@ -1010,11 +1176,41 @@
           });
       };
 
+      const parseRosterText = (text) => {
+        return text
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const parts = line.includes("\t") ? line.split("\t") : line.split(",");
+            const [nameRaw, pick1Raw, pick2Raw] = parts;
+            return normalizeEntry({
+              name: (nameRaw || "").trim(),
+              pick1: (pick1Raw || "").trim(),
+              pick2: (pick2Raw || "").trim(),
+            });
+          });
+      };
+
       const previewPaste = () => {
         const parsed = parseTeamsText(pasteText);
         setPastePreview(parsed);
         const unknowns = parsed.filter((p) => p.team && !aliasForTeam(p.team)).map((p) => p.team);
         setPasteUnknowns(unknowns);
+      };
+
+      const previewRoster = () => {
+        const parsed = parseRosterText(rosterText);
+        setRosterPreview(parsed);
+        const unknowns = new Set();
+        parsed.forEach((entry) => {
+          [entry.pick1, entry.pick2].forEach((pick) => {
+            if (pick && !aliasForTeam(pick)) {
+              unknowns.add(pick);
+            }
+          });
+        });
+        setRosterUnknowns(Array.from(unknowns));
       };
 
       const applyPastePreview = () => {
@@ -1028,6 +1224,26 @@
         setPastePreview([]);
         setPasteUnknowns([]);
         pushNotice({ type: "success", text: "Picks applied from paste preview." });
+      };
+
+      const applyRosterPreview = () => {
+        if (!rosterPreview.length) return;
+        setWeeks((prev) =>
+          prev.map((w, i) => {
+            if (i !== selectedIndex) return w;
+            const nextEntries = rosterPreview.map((entry) => ({ ...entry }));
+            const nextTeams = syncRosterTotals ? buildTeamsFromEntries(nextEntries, w.teams) : w.teams;
+            return { ...w, entries: nextEntries, teams: nextTeams };
+          })
+        );
+        setRosterText("");
+        setRosterPreview([]);
+        setRosterUnknowns([]);
+        setPicksView("roster");
+        pushNotice({
+          type: "success",
+          text: syncRosterTotals ? "Roster applied and team totals updated." : "Roster applied.",
+        });
       };
 
       const exportJSON = () => {
@@ -1076,6 +1292,27 @@
           <div>
             <div className="font-medium">{`${vsAt} ${opponent}`}</div>
             <div className="text-[11px] text-tecmo-white/70">{statusText}</div>
+          </div>
+        );
+      };
+
+      const renderRosterPick = (pickName) => {
+        const label = (pickName || "").trim();
+        if (!label) {
+          return <span className="text-tecmo-white/40">-</span>;
+        }
+        const alias = aliasForTeam(label);
+        const teamInfo = alias ? teamLookup.get(alias) : teamLookup.get(label.toUpperCase());
+        const unknown = Boolean(label) && !alias;
+        return (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <TeamIcon teamName={label} />
+              <span className={unknown ? "text-[var(--tecmo-red)]" : ""}>{label}</span>
+            </div>
+            {teamInfo ? <ResultBadge result={teamInfo.result} /> : unknown ? (
+              <span className="helper-8bit text-[var(--tecmo-red)]">Unknown</span>
+            ) : null}
           </div>
         );
       };
@@ -1261,94 +1498,147 @@
               <div className="panel-8bit rounded-md overflow-hidden">
                 <div className="px-5 py-4 border-b border-white/20 space-y-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <h2 className="pixel-font text-sm">Picks ({week.name})</h2>
-                    <div className="helper-8bit">Sort and filter to focus live games.</div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { key: "all", label: "All" },
-                        { key: "pending", label: "Pending" },
-                        { key: "live", label: "Live" },
-                        { key: "final", label: "Final" },
-                      ].map((f) => (
+                    <div className="flex items-center gap-2">
+                      <h2 className="pixel-font text-sm">Picks ({week.name})</h2>
+                      {rosterStats.hasSecondPick && (
+                        <span className="badge-8bit badge-pending">Two Picks</span>
+                      )}
+                    </div>
+                    {hasRoster && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="helper-8bit text-xs">View</span>
                         <button
-                          key={f.key}
-                          className={`pill-8bit ${statusFilter === f.key ? "active" : ""}`}
-                          onClick={() => setStatusFilter(f.key)}
+                          className={`pill-8bit ${picksView === "teams" ? "active" : ""}`}
+                          onClick={() => setPicksView("teams")}
                         >
-                          {f.label}
+                          Team Totals
                         </button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="helper-8bit text-xs">Sort</span>
-                      <button
-                        className={`pill-8bit ${sortMode === "picks" ? "active" : ""}`}
-                        onClick={() => setSortMode("picks")}
-                      >
-                        Picks ↓
-                      </button>
-                      <button
-                        className={`pill-8bit ${sortMode === "alpha" ? "active" : ""}`}
-                        onClick={() => setSortMode("alpha")}
-                      >
-                        A–Z
-                      </button>
-                    </div>
+                        <button
+                          className={`pill-8bit ${picksView === "roster" ? "active" : ""}`}
+                          onClick={() => setPicksView("roster")}
+                        >
+                          Roster
+                        </button>
+                      </div>
+                    )}
                   </div>
+                  {picksView === "teams" ? (
+                    <div className="flex flex-wrap gap-2 justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { key: "all", label: "All" },
+                          { key: "pending", label: "Pending" },
+                          { key: "live", label: "Live" },
+                          { key: "final", label: "Final" },
+                        ].map((f) => (
+                          <button
+                            key={f.key}
+                            className={`pill-8bit ${statusFilter === f.key ? "active" : ""}`}
+                            onClick={() => setStatusFilter(f.key)}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="helper-8bit text-xs">Sort</span>
+                        <button
+                          className={`pill-8bit ${sortMode === "picks" ? "active" : ""}`}
+                          onClick={() => setSortMode("picks")}
+                        >
+                          Picks ↓
+                        </button>
+                        <button
+                          className={`pill-8bit ${sortMode === "alpha" ? "active" : ""}`}
+                          onClick={() => setSortMode("alpha")}
+                        >
+                          A–Z
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="helper-8bit">
+                        Entries: {fmt(rosterStats.entries)} / Picks: {fmt(rosterStats.picks)}
+                      </div>
+                      <div className="helper-8bit">Roster view shows each entry's picks.</div>
+                    </div>
+                  )}
                 </div>
                 <div className="table-scroll overflow-x-auto">
-                  <table className="w-full text-sm table-8bit">
-                    <thead>
-                      <tr className="text-left">
-                        <th className="px-4 py-3">Team</th>
-                        <th className="px-4 py-3 text-right">Picks</th>
-                        <th className="px-4 py-3 text-center">Result</th>
-                        <th className="px-4 py-3 text-center">Score</th>
-                        <th className="px-4 py-3">Game Status</th>
-                        <th className="px-4 py-3 text-right">Override</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tableTeams.map((t, idx) => {
-                        const rowTone = t._isLive
-                          ? t.result === RESULT.Lose
-                            ? "table-row-lose"
-                            : t.result === RESULT.Win
-                            ? "table-row-win"
-                            : t.result === RESULT.Push
-                            ? "table-row-push"
-                            : "table-row-live"
-                          : "";
-                        return (
-                        <tr
-                          key={t.team + idx}
-                          className={rowTone}
-                        >
-                          <td className="px-4 py-3 font-medium">
-                            <div className="flex items-center gap-2">
-                              <TeamIcon teamName={t.team} />
-                              <span>{t.team}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 tabular-nums text-right">{fmt(Number(t.count) || 0)}</td>
-                          <td className="px-4 py-3 text-center"><ResultBadge result={t.result} /></td>
-                          <td className="px-4 py-3 tabular-nums text-center">{renderScore(t)}</td>
-                          <td className="px-4 py-3">
-                            <div className="space-y-1">
-                              <LiveStatus live={t.live} />
-                              {renderGameLine(t)}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <ResultControl value={t.result} onChange={(value) => setTeamResult(t.team, value)} />
-                          </td>
+                  {picksView === "roster" ? (
+                    <table className="w-full text-sm table-8bit">
+                      <thead>
+                        <tr className="text-left">
+                          <th className="px-4 py-3">Name</th>
+                          <th className="px-4 py-3">Pick 1</th>
+                          {rosterStats.hasSecondPick && <th className="px-4 py-3">Pick 2</th>}
                         </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {(week.entries || []).map((entry, idx) => (
+                          <tr key={`${entry.name || "entry"}-${idx}`}>
+                            <td className="px-4 py-3 font-medium">{entry.name || "-"}</td>
+                            <td className="px-4 py-3">{renderRosterPick(entry.pick1)}</td>
+                            {rosterStats.hasSecondPick && (
+                              <td className="px-4 py-3">{renderRosterPick(entry.pick2)}</td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className="w-full text-sm table-8bit">
+                      <thead>
+                        <tr className="text-left">
+                          <th className="px-4 py-3">Team</th>
+                          <th className="px-4 py-3 text-right">Picks</th>
+                          <th className="px-4 py-3 text-center">Result</th>
+                          <th className="px-4 py-3 text-center">Score</th>
+                          <th className="px-4 py-3">Game Status</th>
+                          <th className="px-4 py-3 text-right">Override</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tableTeams.map((t, idx) => {
+                          const rowTone = t._isLive
+                            ? t.result === RESULT.Lose
+                              ? "table-row-lose"
+                              : t.result === RESULT.Win
+                              ? "table-row-win"
+                              : t.result === RESULT.Push
+                              ? "table-row-push"
+                              : "table-row-live"
+                            : "";
+                          return (
+                          <tr
+                            key={t.team + idx}
+                            className={rowTone}
+                          >
+                            <td className="px-4 py-3 font-medium">
+                              <div className="flex items-center gap-2">
+                                <TeamIcon teamName={t.team} />
+                                <span>{t.team}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 tabular-nums text-right">{fmt(Number(t.count) || 0)}</td>
+                            <td className="px-4 py-3 text-center"><ResultBadge result={t.result} /></td>
+                            <td className="px-4 py-3 tabular-nums text-center">{renderScore(t)}</td>
+                            <td className="px-4 py-3">
+                              <div className="space-y-1">
+                                <LiveStatus live={t.live} />
+                                {renderGameLine(t)}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <ResultControl value={t.result} onChange={(value) => setTeamResult(t.team, value)} />
+                            </td>
+                          </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
 
                 <div className="px-5 py-4 border-t border-white/20">
@@ -1450,6 +1740,53 @@
                     {pasteUnknowns.length > 0 && (
                       <div className="text-xs text-[var(--tecmo-red)] mt-1">
                         Unknown teams: {pasteUnknowns.join(", ")}
+                      </div>
+                    )}
+                  </label>
+
+                  <label className="block">
+                    <span className="helper-8bit">Paste roster (Name,Pick 1,Pick 2 per line)</span>
+                    <textarea
+                      className="textarea-8bit mt-1 w-full min-h-[120px] px-3 py-2"
+                      placeholder={"Armen G 5,Texans,Bengals\nArmen Mac 50 30,Texans,Eagles"}
+                      value={rosterText}
+                      onChange={(e) => setRosterText(e.target.value)}
+                    ></textarea>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <button
+                        onClick={previewRoster}
+                        className="btn-8bit secondary px-3 py-2"
+                        disabled={!rosterText.trim()}
+                      >
+                        Preview
+                      </button>
+                      <button
+                        onClick={applyRosterPreview}
+                        className="btn-8bit px-3 py-2"
+                        disabled={!rosterPreview.length}
+                      >
+                        Apply to Week
+                      </button>
+                      <label className="inline-flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          className="accent-[var(--tecmo-gold)]"
+                          checked={syncRosterTotals}
+                          onChange={(e) => setSyncRosterTotals(e.target.checked)}
+                        />
+                        <span className="helper-8bit">Update team totals</span>
+                      </label>
+                    </div>
+                    {rosterPreview.length > 0 && (
+                      <div className="helper-8bit mt-2">
+                        Preview loaded for {rosterPreview.length} entries -{" "}
+                        {fmt(rosterPreview.reduce((a, entry) => a + (entry.pick1 ? 1 : 0) + (entry.pick2 ? 1 : 0), 0))}{" "}
+                        picks
+                      </div>
+                    )}
+                    {rosterUnknowns.length > 0 && (
+                      <div className="text-xs text-[var(--tecmo-red)] mt-1">
+                        Unknown teams: {rosterUnknowns.join(", ")}
                       </div>
                     )}
                   </label>
@@ -1604,6 +1941,7 @@
                 <ol className="mt-2 space-y-2 text-sm list-decimal list-inside">
                   <li>Pick a week above (add the next week when ready).</li>
                   <li>Paste your picks (Team,Count per line), preview, then apply.</li>
+                  <li>For two-pick weeks, paste a roster (Name,Pick 1,Pick 2) and switch to Roster view.</li>
                   <li>Hit <span className="pixel-font">Sync Live Scores</span> to pull ESPN results.</li>
                   <li>Manual overrides still work — ties count as losses when syncing.</li>
                   <li>Export/Import JSON for off-line backups between weeks.</li>
