@@ -117,12 +117,13 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
       </section>;
     }
 
-    function RecapDialog({recap,onClose,onNotice}) {
+    function RecapDialog({recap,onClose,onNotice,returnFocus}) {
       const dialogRef = useRef(null);
       useEffect(()=> {
-        const previous = document.activeElement;
+        const previous = returnFocus.current || document.activeElement;
+        const dialog = dialogRef.current;
         dialogRef.current?.showModal();
-        return ()=>{dialogRef.current?.close();previous?.focus?.();};
+        return ()=>{dialog?.close();previous?.focus?.();};
       },[]);
       const download = ()=>{
         const a=document.createElement("a");a.href=recap.url;a.download=recap.fileName;a.click();
@@ -183,6 +184,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
       const [onlyWatched,setOnlyWatched] = useState(false);
       const [scenarioTeam,setScenarioTeam] = useState("");
       const [recap,setRecap] = useState(null);
+      const recapTrigger = useRef(null);
       const [recapBusy,setRecapBusy] = useState(false);
 
       const [autoRefresh, setAutoRefresh] = useState(() => {
@@ -534,7 +536,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
         <p id="status-definition" className="status-definition">Remaining includes safe and pending entries. Out includes pre-eliminated entries.</p>
         <div className="week-toolbar"><div className="week-controls"><label className="sr-only" htmlFor="season-select">Season</label><select id="season-select" aria-label="Season" value={week.season} onChange={e=>setSelectedIndex(weeks.findIndex(w=>w.season===Number(e.target.value)))}>{[...new Set(weeks.map(w=>w.season))].sort((a,b)=>b-a).map(year=><option key={year} value={year}>{year}{year<2026?" Archive":" Season"}</option>)}</select>
           <label className="sr-only" htmlFor="week-select">Week</label><select id="week-select" aria-label="Week" value={selectedIndex} onChange={e=>setSelectedIndex(Number(e.target.value))}>{weeks.map((w,i)=>w.season===week.season?<option key={i} value={i}>{w.name}</option>:null)}</select></div>
-          <div className="action-row"><button className="btn-8bit warn" onClick={()=>fetchScores()} disabled={syncing}>{syncing?"Syncing…":"Sync scores"}</button><button className="btn-8bit secondary" onClick={openRecap} disabled={recapBusy || !sums.grandTotal || sums.warnings.length>0}>{recapBusy?"Creating recap…":"Weekly recap"}</button></div>
+          <div className="action-row"><button className="btn-8bit warn" onClick={()=>fetchScores()} disabled={syncing}>{syncing?"Syncing…":"Sync scores"}</button><button className="btn-8bit secondary" ref={recapTrigger} onClick={openRecap} disabled={recapBusy || !sums.grandTotal || sums.warnings.length>0}>{recapBusy?"Creating recap…":"Weekly recap"}</button></div>
         </div>
         <div className="sync-status"><span>{hasLiveGames?"Games live · ":""}{lastSyncShort==="Never"?"Scores not synced yet":`Updated ${lastSyncShort}`}</span><label className="check-row"><input type="checkbox" checked={autoRefresh} onChange={e=>setAutoRefresh(e.target.checked)}/>Auto-refresh every 60s</label></div>
         {week.localDraft && <p className="local-copy">Local working copy · edits have not been published to the shared league site.</p>}
@@ -789,7 +791,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
           {commissioner && hasRoster && <details className="roster-details"><summary>Entry roster on this device ({fmt(week.entries.length)})</summary><label>Search entries<input value={rosterSearch} onChange={e=>{setRosterSearch(e.target.value);setRosterPage(0);}} /></label><div className="preview-table"><table><thead><tr><th>Name</th><th>Picks</th><th>Status</th></tr></thead><tbody>{visibleRoster.map((e,i)=><tr key={i}><td>{e.name}</td><td>{[e.pick1,e.pick2,e.pick3].filter(Boolean).join(", ") || "—"}</td><td>{e.preOutReason || entryStatus(e,rosterResults,week.requiredPicks)}</td></tr>)}</tbody></table></div><div className="action-row"><button disabled={currentPage===0} onClick={()=>setRosterPage(currentPage-1)}>Previous</button><span>Page {currentPage+1} of {pageCount}</span><button disabled={currentPage>=pageCount-1} onClick={()=>setRosterPage(currentPage+1)}>Next</button></div></details>}
         </main>
         <footer>Built for your LMS pool · ESPN scores · Ties are losses</footer>
-        {recap && <RecapDialog recap={recap} onClose={()=>setRecap(null)} onNotice={pushNotice}/>}
+        {recap && <RecapDialog returnFocus={recapTrigger} recap={recap} onClose={()=>setRecap(null)} onNotice={pushNotice}/>}
       </div>;
     }
 
