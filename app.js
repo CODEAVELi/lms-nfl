@@ -208,14 +208,16 @@ function WorkbookImporter({
 function RecapDialog({
   recap,
   onClose,
-  onNotice
+  onNotice,
+  returnFocus
 }) {
   const dialogRef = useRef(null);
   useEffect(() => {
-    const previous = document.activeElement;
+    const previous = returnFocus.current || document.activeElement;
+    const dialog = dialogRef.current;
     dialogRef.current?.showModal();
     return () => {
-      dialogRef.current?.close();
+      dialog?.close();
       previous?.focus?.();
     };
   }, []);
@@ -359,6 +361,7 @@ function App() {
   const [onlyWatched, setOnlyWatched] = useState(false);
   const [scenarioTeam, setScenarioTeam] = useState("");
   const [recap, setRecap] = useState(null);
+  const recapTrigger = useRef(null);
   const [recapBusy, setRecapBusy] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -914,6 +917,7 @@ function App() {
     disabled: syncing
   }, syncing ? "Syncing…" : "Sync scores"), React.createElement("button", {
     className: "btn-8bit secondary",
+    ref: recapTrigger,
     onClick: openRecap,
     disabled: recapBusy || !sums.grandTotal || sums.warnings.length > 0
   }, recapBusy ? "Creating recap…" : "Weekly recap"))), React.createElement("div", {
@@ -1245,6 +1249,7 @@ function App() {
     disabled: currentPage >= pageCount - 1,
     onClick: () => setRosterPage(currentPage + 1)
   }, "Next")))), React.createElement("footer", null, "Built for your LMS pool · ESPN scores · Ties are losses"), recap && React.createElement(RecapDialog, {
+    returnFocus: recapTrigger,
     recap: recap,
     onClose: () => setRecap(null),
     onNotice: pushNotice
