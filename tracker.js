@@ -116,6 +116,7 @@
         totalsMode: week.totalsMode === "teams" ? "teams" : (week.entries?.length ? "roster" : "teams"),
         requiredPicks: Math.min(3, Math.max(Number(week.requiredPicks) || 1, week.entries?.some(e => e.pick3) ? 3 : week.entries?.some(e => e.pick2) ? 2 : 1)),
         source: week.source || null,
+        localDraft: Boolean(week.localDraft),
         templateFingerprint: typeof week.templateFingerprint === "string" ? week.templateFingerprint : null,
         preOut: Array.isArray(week.preOut)
           ? week.preOut.map((p) => ({

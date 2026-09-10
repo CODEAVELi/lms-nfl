@@ -52,6 +52,9 @@
       --tecmo-shadow: #05070f;
       --tecmo-outline: #0b1021;
     }
+    html { scroll-padding-top:110px; }
+    .status-definition { font-size:14px; margin:-10px 0 20px; }
+    .app-shell .team-chip { font:700 11px/1 system-ui,sans-serif; }
     body.tecmo {
       background-color: var(--tecmo-background);
       color: var(--tecmo-white);
@@ -246,17 +249,174 @@
     .board-green { color:#80e65b; } .board-red { color:#ff657d; }
     .board-footer { display:flex; justify-content:space-between; gap:8px; padding:8px 16px; border-top:2px solid #28334a; color:#aebad0; font-size:16px; }
     @media(max-width:400px) { .board-topline { padding:12px 9px; gap:6px; } .board-label { letter-spacing:2px; } .board-tagline { letter-spacing:1px; } .board-footer { padding:8px; font-size:14px; } }
+    /* Game-day layout: readable body copy, one status strip, roomy controls. */
+    html { scroll-padding-top:110px; }
+    .status-definition { font-size:14px; margin:-10px 0 20px; }
+    .app-shell .team-chip { font:700 11px/1 system-ui,sans-serif; }
+    body.tecmo { font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:16px; line-height:1.55; }
+    .app-shell { max-width:1240px; margin:auto; padding:24px 20px 40px; }
+    .app-shell h1,.app-shell h2,.app-shell h3,.app-shell p { margin:0; }
+    .app-shell h1 { font-size:22px; line-height:1.7; color:#ffce40; }
+    .app-shell h2.pixel-font { font-size:15px; line-height:1.8; }
+    .app-shell h3.pixel-font { font-size:13px; line-height:1.8; }
+    .app-shell p { color:#c1cbe0; }
+    .app-shell .helper-8bit,.app-shell .source-line { font-family:inherit; font-size:14px; line-height:1.6; color:#c1cbe0; }
+    .app-shell .text-xs,.app-shell .text-\[11px\] { font-size:14px; }
+    button,input,select,textarea,summary { font:inherit; }
+    .app-shell button,.app-shell select,.app-shell input:not([type=checkbox]),.app-shell summary { min-height:44px; }
+    .app-shell button { padding:10px 14px; line-height:1.4; cursor:pointer; }
+    .app-shell button:disabled { opacity:.45; cursor:not-allowed; }
+    .app-shell :focus-visible { outline:3px solid #ffce40; outline-offset:4px; }
+    .app-shell [tabindex="-1"]:focus { outline:none; }
+    .app-shell input:not([type=checkbox]),.app-shell select,.app-shell textarea { color:#f5f7ff; background:#111b30; border:1px solid #697790; border-radius:4px; padding:10px 12px; max-width:100%; }
+    .app-shell input[type=checkbox] { width:22px; height:22px; accent-color:#f8b800; flex-shrink:0; }
+    .app-shell select { min-width:130px; }
+    .app-shell summary { cursor:pointer; padding:12px 0; font-weight:650; }
+    .app-header,.week-toolbar,.section-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .app-header { margin-bottom:24px; flex-wrap:wrap; }
+    .app-header p { font-size:15px; }
+    .mode-switch { display:flex; gap:4px; padding:4px; background:#0a1223; border:1px solid #61708c; border-radius:6px; }
+    .mode-switch button { background:transparent; color:#e0e7f4; border-radius:3px; font-size:15px; }
+    .mode-switch [aria-pressed=true] { background:#f8b800; color:#151003; font-weight:700; }
+    .app-shell .prize-board { margin-bottom:20px; }
+    .app-shell .board-topline { font-family:inherit; font-size:14px; font-weight:750; letter-spacing:2px; padding:12px 22px; }
+    .app-shell .board-prize { padding:24px 12px 22px; }
+    .app-shell .board-label { font-family:inherit; font-size:15px; font-weight:700; letter-spacing:4px; }
+    .app-shell .prize-digits { font-size:clamp(27px,6.7vw,76px); margin:12px 0; }
+    .app-shell .board-tagline { font-family:inherit; font-size:15px; letter-spacing:.5px; }
+    .status-strip { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); background:#080e18f5; border:1px solid #63738e; box-shadow:0 5px 14px #0005; position:sticky; top:0; z-index:20; margin:0 0 22px; backdrop-filter:blur(12px); }
+    .status-strip>div { text-align:center; padding:9px 4px 5px; border-right:1px solid #33425c; }
+    .status-strip>div:last-child { border:0; }
+    .status-strip span { display:block; font-size:14px; color:#ccd5e7; }
+    .status-strip strong { display:block; font-size:46px; line-height:1.1; font-weight:400; font-variant-numeric:tabular-nums; }
+    .gold { color:#ffce40; }
+    .week-toolbar { flex-wrap:wrap; gap:12px; }
+    .week-controls,.action-row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .sync-status { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:10px; color:#c1cbe0; font-size:14px; }
+    .check-row { display:flex; gap:10px; align-items:center; min-height:44px; cursor:pointer; line-height:1.5; }
+    .week-details { margin:4px 0 20px; color:#c1cbe0; font-size:14px; }
+    .week-details p { margin-bottom:8px; }
+    .local-copy,.warning-text { padding:12px 16px; color:#ffdb70!important; background:#3a301c; border:1px solid #827044; margin:12px 0!important; border-radius:4px; }
+    .error-text { color:#ff9aac!important; margin:8px 0!important; }
+    .success-text { color:#9ded83!important; }
+    .notice { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; background:#182d48; margin:12px 0; border:1px solid #537cb4; }
+    .notice-error { background:#451e2b; border-color:#ba5771; }
+    .notice button { border:1px solid #b0bbcf; border-radius:4px; }
+    .watchlist-panel { padding:20px; background:#101d33; border:1px solid #536787; border-left:4px solid #f8b800; margin:20px 0 28px; }
+    .watchlist-panel p { font-size:15px; margin-top:10px; }
+    .watch-chips { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+    .watch-chips button { background:#283955; border:1px solid #90a2bd; border-radius:5px; }
+    .watch-chips span { padding-left:10px; }
+    .filter-button,.game-filters button { background:#101a2e; border:1px solid #8694ad; border-radius:4px; }
+    .filter-button[aria-pressed=true],.game-filters [aria-pressed=true] { background:#bbde78; color:#142007; border-color:#bbde78; font-weight:700; }
+    .game-heading label { display:flex; align-items:center; gap:10px; font-size:14px; }
+    .game-filters { display:flex; gap:10px; flex-wrap:wrap; margin:18px 0; }
+    .game-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+    .game-card { min-width:0; padding:18px; background:#0a1223; border:1px solid #52627e; border-radius:6px; box-shadow:0 3px 0 #040811; }
+    .game-card.watched { border:2px solid #f8b800; padding:17px; }
+    .game-card.game-live { background:#10251e; }
+    .card-top,.matchup,.exposure-line { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .card-top { margin-bottom:16px; }
+    .status-tag { border-radius:4px; font-size:13px; font-weight:700; padding:5px 9px; white-space:nowrap; }
+    .status-pending { color:#ffdf82; background:#3b3017; }
+    .status-safe { color:#b3f4a0; background:#203a26; }
+    .status-out { color:#ffafbc; background:#4b2532; }
+    .watch-button { border:1px solid #8a9ab3; border-radius:4px; font-size:14px; background:#16253b; }
+    .watch-button[aria-pressed=true] { color:#ffdc6f; border-color:#dcb749; }
+    .team-heading { display:flex; align-items:center; gap:10px; min-width:0; }
+    .team-heading h3 { font:700 19px/1.4 system-ui,sans-serif; }
+    .team-heading .team-logo { width:32px; height:28px; flex-shrink:0; }
+    .game-score { font-size:24px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .opponent { font-size:16px; margin-top:5px!important; }
+    .game-time { font-size:14px; margin-top:6px!important; min-height:22px; }
+    .exposure-line { margin-top:22px; flex-wrap:wrap; gap:3px; font-size:14px; }
+    .exposure-line span { color:#b8c6dd; font-size:13px; }
+    .exposure-track { height:6px; background:#2b3951; margin-top:8px; border-radius:3px; overflow:hidden; }
+    .exposure-track span { display:block; height:100%; background:#f8b800; }
+    .loss-impact { font-size:14px; margin-top:12px!important; }
+    .card-override { margin-top:16px; padding-top:14px; border-top:1px solid #52627e; }
+    .card-override>span,.card-override small { display:block; font-size:13px; margin:6px 0; color:#c1cbe0; }
+    .card-override .segmented-8bit { display:none; }
+    .card-override select { display:block; width:100%; }
+    .empty-state { padding:40px 20px; text-align:center; border:1px dashed #7c8ead; }
+    .empty-state p { margin:12px 0 20px; }
+    .what-if { margin-top:28px; padding:8px 20px 20px; }
+    .what-if label { display:block; margin-top:14px; }
+    .what-if select { display:block; margin-top:6px; width:100%; max-width:380px; }
+    .scenario-result { margin-top:16px!important; }
+    .workspace-intro { padding:18px 0; }
+    .workspace-intro p { margin:10px 0; }
+    .commissioner-content { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px; margin:22px 0; align-items:start; }
+    .workspace-panel { padding:22px; min-width:0; }
+    .workspace-panel>p { margin:12px 0; }
+    .drop-zone { border:2px dashed #91a4c6; border-radius:5px; padding:18px; background:#11213a; margin:20px 0; }
+    .drop-zone label { display:block; margin-bottom:10px; }
+    .drop-zone input { width:100%; border:0!important; padding:0!important; font-size:14px; }
+    .drop-zone input::file-selector-button { min-height:44px; padding:8px 12px; margin-right:8px; border:1px solid #bdc9dd; border-radius:4px; background:#263b5e; color:white; }
+    .import-options { display:flex; flex-wrap:wrap; gap:12px; margin:15px 0; }
+    .import-options label { flex:1; min-width:110px; }
+    .import-options input,.import-options select { display:block; width:100%; margin-top:6px; }
+    .import-totals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:14px; background:#14223b; }
+    .import-totals strong { display:block; font-size:24px; }
+    .preview-table { overflow:auto; max-height:320px; margin:14px 0; border:1px solid #536787; }
+    .preview-table table { width:100%; border-collapse:collapse; font-size:14px; }
+    .preview-table th,.preview-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #34415a; }
+    .preview-table caption { padding:10px; font-weight:700; text-align:left; }
+    .preview-table thead { background:#1c2c47; position:sticky; top:0; }
+    .recap-dialog { background:#0a1223; color:#f5f7ff; border:2px solid #f8b800; border-radius:6px; padding:22px; width:min(700px,calc(100vw - 28px)); max-height:90dvh; overflow:auto; }
+    .recap-dialog::backdrop { background:#010611ce; }
+    .recap-dialog img { width:100%; height:auto; margin:18px 0; }
+    .recap-dialog p { margin-top:10px; font-size:14px; }
+    .roster-details { margin-top:24px; }
+    .roster-details input { display:block; margin-top:8px; width:100%; max-width:400px; }
+    .app-shell footer { text-align:center; margin-top:32px; color:#b4c0d5; font-size:14px; }
+    .skip-link { position:fixed; top:8px; left:8px; z-index:100; background:#f8b800; color:#101828; padding:12px; transform:translateY(-200%); }
+    .skip-link:focus { transform:translateY(0); }
+    #main-content { scroll-margin-top:110px; }
+    @media(max-width:1050px) { .game-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media(max-width:720px) {
+      .app-shell { padding:16px 14px 28px; }
+      .app-header { gap:14px; margin-bottom:20px; }
+      .app-shell h1 { font-size:19px; }
+      .app-shell h2.pixel-font { font-size:13px; }
+      .mode-switch { width:100%; }
+      .mode-switch button { flex:1; }
+      .app-shell .board-prize { padding:20px 8px; }
+      .app-shell .board-topline { font-size:12px; padding:10px 12px; letter-spacing:1px; }
+      .app-shell .prize-digits { font-size:clamp(25px,7vw,48px); }
+      .app-shell .board-tagline { font-size:14px; }
+      .status-strip { margin-bottom:18px; }
+      .status-strip span { font-size:14px; }
+      .status-strip strong { font-size:35px; }
+      .week-controls { width:100%; }
+      .week-controls select { flex:1; min-width:0; }
+      .week-toolbar>.action-row { width:100%; }
+      .week-toolbar>.action-row button { flex:1; }
+      .sync-status { align-items:flex-start; }
+      .section-heading { flex-wrap:wrap; gap:12px; }
+      .watchlist-panel { padding:16px; }
+      .game-grid,.commissioner-content { grid-template-columns:minmax(0,1fr); }
+      .game-heading label { width:100%; justify-content:space-between; }
+      .game-filters { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+      .game-filters button { padding:10px 5px; font-size:14px; }
+      .game-card { padding:18px; }
+      .game-card.watched { padding:17px; }
+      .workspace-panel { padding:16px; }
+      .recap-dialog { padding:16px; }
+    }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
   </style>
 </head>
 <body class="min-h-screen tecmo grid-bg">
   <div id="root"></div>
 
-  <!-- React + Babel (so we can paste JSX without a build) -->
+  <!-- Precompiled React UI; workbook parser loads only when importing. -->
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 
   <script src="data/week1-2026.js"></script>
   <script src="tracker.js"></script>
+  <script src="companion.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

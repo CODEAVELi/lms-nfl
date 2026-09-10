@@ -1,22 +1,5 @@
 const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
-    function useAnimatedNumber(value, duration = 600) {
-      const [display, setDisplay] = useState(value);
-      useEffect(() => {
-        const from = display, to = value, start = performance.now();
-        let raf;
-        const tick = (now) => {
-          const t = Math.min(1, (now - start) / duration);
-          const eased = 1 - Math.pow(1 - t, 3);
-          setDisplay(Math.round(from + (to - from) * eased));
-          if (t < 1) raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf);
-      }, [value]);
-      return display;
-    }
-
     // Team logo component:
     // - Attempts to load /assets/logos/ABBR.svg (preferred) and falls back to showing a pixel chip with the team abbreviation.
     // - To use logos: drop SVG files into /assets/logos (e.g., /assets/logos/KC.svg). PNGs also supported by changing extension.
@@ -42,31 +25,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
       );
     }
 
-    const StatCard = ({ title, value, sub }) => (
-      <div className="panel-8bit p-4">
-        <div className="pixel-font text-[10px] text-tecmo-white/80 uppercase">{title}</div>
-        <div className="mt-2 pixel-mono text-2xl">{fmt(value)}</div>
-        {sub !== undefined && <div className="mt-1 helper-8bit">{sub}</div>}
-      </div>
-    );
-
-    const Pill = ({ active, children, onClick }) => (
-      <button onClick={onClick} className={`pill-8bit ${active ? "active" : ""}`}>
-        {children}
-      </button>
-    );
-
-    const ResultBadge = ({ result }) => {
-      const map = {
-        [RESULT.Pending]: "badge-pending",
-        [RESULT.Win]: "badge-win",
-        [RESULT.Lose]: "badge-lose",
-        [RESULT.Push]: "badge-push",
-      };
-      return <span className={`badge-8bit ${map[result]}`}>{result}</span>;
-    };
-
-    const ResultControl = ({ value, onChange }) => (
+    const ResultControl = ({ value, onChange, teamName }) => (
       <div className="flex items-center gap-2">
         <div className="hidden sm:inline-flex segmented-8bit">
           {[RESULT.Win, RESULT.Lose, RESULT.Push, RESULT.Pending].map((opt) => (
@@ -81,6 +40,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
           ))}
         </div>
         <select
+          aria-label={`Result override for ${teamName}`}
           className="sm:hidden select-8bit px-2 py-1 text-xs"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -92,18 +52,110 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
       </div>
     );
 
-    const LiveStatus = ({ live }) => {
-      if (!live) return null;
-      const isLive = !live.completed && live.state === "in";
-      if (!isLive) return null;
-      return (
-        <span className="live-badge">
-          <span className="w-2 h-2 rounded-full bg-[var(--tecmo-gold)] animate-pulse"></span>
-          <span>Live</span>
-          <span className="pixel-mono text-[11px]">{live.statusText || "In progress"}</span>
-        </span>
-      );
-    };
+    function WorkbookImporter({season, onApply, onNotice}) {
+      const [sheets,setSheets] = useState(null);
+      const [sheetName,setSheetName] = useState("");
+      const [number,setNumber] = useState(1);
+      const [year,setYear] = useState(season);
+      const [skipBlank,setSkipBlank] = useState(false);
+      const [busy,setBusy] = useState(false);
+      const [fileName,setFileName] = useState("");
+      const [acknowledge,setAcknowledge] = useState(false);
+      const inputRef = useRef(null);
+      const fileRequest = useRef(0);
+      useEffect(()=>()=>{fileRequest.current++;},[]);
+      const detected = useMemo(()=>sheets ? detectWorkbookSheets(sheets) : [],[sheets]);
+      const preview = useMemo(()=> {
+        if (!sheets || !sheetName) return null;
+        try {return workbookPreview(sheets,sheetName,number,Number(year),skipBlank);}
+        catch(error) {return {errors:[error.message],warnings:[]};}
+      },[sheets,sheetName,number,year,skipBlank]);
+      useEffect(()=>setAcknowledge(false),[preview]);
+      const readFile = async file => {
+        const request = ++fileRequest.current;
+        setBusy(true);setSheets(null);setFileName("");
+        try {
+          const next = await readWorkbookFile(file);
+          if (request !== fileRequest.current) return;
+          const candidates = detectWorkbookSheets(next);
+          if (!candidates.length) throw new Error("No Name and Week columns found. Use the LMS workbook format.");
+          const first = candidates.find(s=>s.weeks.some(w=>w.populated)) || candidates[0];
+          const populated = first.weeks.filter(w=>w.populated);
+          setSheets(next);setSheetName(first.name);setNumber((populated.length?populated:first.weeks).at(-1).number);
+          setYear(season);setSkipBlank(false);setFileName(file.name);
+        } catch(error) {if(request === fileRequest.current) onNotice({type:"error",text:error.message});}
+        finally {if(request === fileRequest.current) setBusy(false);}
+      };
+      const selected = detected.find(s=>s.name===sheetName);
+      return <section className="panel-8bit workspace-panel" aria-labelledby="workbook-heading">
+        <h2 id="workbook-heading" className="pixel-font">Import weekly spreadsheet</h2>
+        <p>Review the detected week, picks and exceptions before replacing that week’s local working copy. The file stays on this device.</p>
+        <div className="drop-zone" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy && e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);}}>
+          <label htmlFor="workbook-file">{busy?"Reading workbook…":"Drop an .xlsx workbook here, or choose a file"}</label>
+          <input ref={inputRef} id="workbook-file" type="file" accept=".xlsx" disabled={busy} onChange={e=>{if(e.target.files?.[0])readFile(e.target.files[0]);e.target.value="";}} />
+        </div>
+        {sheets && <>
+          <p className="source-line">{fileName}</p>
+          <div className="import-options">
+            <label>Sheet<select value={sheetName} onChange={e=>{setSheetName(e.target.value);const next=detected.find(s=>s.name===e.target.value);setNumber((next.weeks.filter(w=>w.populated).at(-1)||next.weeks[0]).number);}}>{detected.map(s=><option key={s.name}>{s.name}</option>)}</select></label>
+            <label>Import season<input type="number" min="1920" max="2200" value={year} onChange={e=>setYear(e.target.value)} /></label>
+            <label>Import week<select value={number} onChange={e=>setNumber(Number(e.target.value))}>{selected?.weeks.map(w=><option key={w.number} value={w.number}>Week {w.number}{w.populated?"":" (blank)"}</option>)}</select></label>
+          </div>
+          <label className="check-row"><input type="checkbox" checked={skipBlank} onChange={e=>setSkipBlank(e.target.checked)} />Exclude rows with no picks in this week (for previously eliminated entries)</label>
+          {preview?.week && <>
+            <div className="import-totals"><span><strong>{fmt(preview.week.entries.length)}</strong> entries</span><span><strong>{fmt(preview.pickCount)}</strong> picks</span><span><strong>{preview.week.requiredPicks}</strong> per entry</span><span><strong>{preview.noPickCount}</strong> pre-out</span></div>
+            <p className={preview.errors.length?"error-text":"success-text"}>{preview.reconciliation}</p>
+            <div className="preview-table"><table><caption>Detected team totals</caption><thead><tr><th>Team</th><th>Picks</th></tr></thead><tbody>{preview.week.teams.map(t=><tr key={t.team}><td>{t.team}</td><td>{fmt(t.count)}</td></tr>)}</tbody></table></div>
+            <details><summary>Review first 10 entries on this device</summary><div className="preview-table"><table><thead><tr><th>Entry</th><th>Picks / exception</th></tr></thead><tbody>{preview.week.entries.slice(0,10).map((e,i)=><tr key={i}><td>{e.name}</td><td>{e.preOutReason || [e.pick1,e.pick2,e.pick3].filter(Boolean).join(", ") || "Pending — no picks"}</td></tr>)}</tbody></table></div></details>
+          </>}
+          {preview?.warnings.map(w=><p key={w} className="warning-text">{w}</p>)}
+          {preview?.errors.slice(0,8).map(e=><p key={e} role="alert" className="error-text">{e}</p>)}
+          {preview?.errors.length>8 && <p className="error-text">{preview.errors.length-8} additional errors. Correct the workbook before applying.</p>}
+          <label className="check-row"><input type="checkbox" checked={acknowledge} onChange={e=>setAcknowledge(e.target.checked)} />I reviewed the season, week and counts. Replace this week’s local working copy.</label>
+          <button className="btn-8bit" disabled={busy || !preview?.week || preview.errors.length>0 || !acknowledge} onClick={()=>{onApply({...preview.week,source:fileName});setSheets(null);setFileName("");}}>Apply reviewed week</button>
+        </>}
+      </section>;
+    }
+
+    function RecapDialog({recap,onClose,onNotice}) {
+      const dialogRef = useRef(null);
+      useEffect(()=> {
+        const previous = document.activeElement;
+        dialogRef.current?.showModal();
+        return ()=>{dialogRef.current?.close();previous?.focus?.();};
+      },[]);
+      const download = ()=>{
+        const a=document.createElement("a");a.href=recap.url;a.download=recap.fileName;a.click();
+      };
+      const share = async()=>{
+        try {
+          const file = new File([recap.blob],recap.fileName,{type:"image/png"});
+          if (navigator.canShare?.({files:[file]}) && navigator.share) await navigator.share({files:[file],title:`LMS ${recap.model.season} Week ${recap.model.weekNumber}`});
+          else {download();onNotice({type:"info",text:"Recap downloaded. Attach the PNG to your group chat."});}
+        } catch(error) {if(error.name!=="AbortError")onNotice({type:"error",text:"Sharing failed. Use Download PNG instead."});}
+      };
+      return <dialog className="recap-dialog" ref={dialogRef} onCancel={e=>{e.preventDefault();onClose();}} aria-labelledby="recap-title">
+        <div className="section-heading"><h2 className="pixel-font" id="recap-title">Weekly recap</h2><button className="btn-8bit secondary" onClick={onClose} aria-label="Close recap">Close</button></div>
+        <p>A snapshot of this week’s current results. Participant names are never included.</p>
+        <img src={recap.url} alt={`Week ${recap.model.weekNumber}: ${fmt(recap.model.remaining)} remaining, ${fmt(recap.model.safe)} safe, ${fmt(recap.model.pending)} pending, ${fmt(recap.model.out)} out.`} />
+        <div className="action-row"><button className="btn-8bit" onClick={download}>Download PNG</button><button className="btn-8bit secondary" onClick={share}>Share recap</button></div>
+      </dialog>;
+    }
+
+    function GameCard({team,week,watched,onWatch,commissioner,onResult,exposure}) {
+      const live = team.live;
+      const status = team.result === RESULT.Win ? "Safe" : team.result === RESULT.Lose ? "Out" : "Pending";
+      return <article className={`game-card ${watched?"watched":""} ${team._isLive?"game-live":""}`} aria-label={`${team.team} game`}>
+        <div className="card-top"><span className={`status-tag status-${status.toLowerCase()}`}>{team._isLive?`Live · ${status}`:status}</span><button className="watch-button" aria-pressed={watched} aria-label={`${watched?"Unwatch":"Watch"} ${team.team}`} onClick={onWatch}>{watched?"Watching":"+ My Picks"}</button></div>
+        <div className="matchup"><div className="team-heading"><TeamIcon teamName={team.team}/><h3>{team.team}</h3></div><strong className="game-score">{live && live.state!=="pre" && live.teamScore!==null && live.opponentScore!==null?`${live.teamScore} – ${live.opponentScore}`:"—"}</strong></div>
+        <p className="opponent">{live?`${live.homeAway==="home"?"vs":"@"} ${live.opponent || live.opponentAbbr}`:"Matchup awaiting score sync"}</p>
+        <p className="game-time">{live?.completed?"Final":live?.state === "pre" ? formatGameTime(live.kickoff) : live?.statusText || "Kickoff time unavailable"}{team.manualOverride?" · Manual result":""}</p>
+        <div className="exposure-line"><strong>{fmt(exposure.count)} entries</strong><span>{exposure.percent.toFixed(1)}% of starting field</span></div>
+        <div className="exposure-track" aria-hidden="true"><span style={{width:`${Math.min(100,exposure.percent)}%`}} /></div>
+        {team.result === RESULT.Pending && <p className="loss-impact">{exposure.exact?`If they lose: ${fmt(exposure.additionalOut)} additional entries out.`:"Load the entry roster to calculate exact eliminations."}</p>}
+        {commissioner && <div className="card-override"><span>Result override</span><ResultControl teamName={team.team} value={team.result} onChange={onResult}/><small>Pending returns control to ESPN on the next sync.</small></div>}
+      </article>;
+    }
 
     function App() {
       const [weeks, setWeeks] = useState(loadInitialWeeks);
@@ -125,10 +177,13 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
       const [rosterText, setRosterText] = useState("");
       const [rosterPreview, setRosterPreview] = useState([]);
       const [rosterUnknowns, setRosterUnknowns] = useState([]);
-      const [manageOpen, setManageOpen] = useState(() => {
-        if (typeof window === "undefined") return true;
-        return window.innerWidth >= 768;
-      });
+      const [manageOpen, setManageOpen] = useState(false);
+      const [commissioner, setCommissioner] = useState(false);
+      const [watchlists,setWatchlists] = useState(readWatchlists);
+      const [onlyWatched,setOnlyWatched] = useState(false);
+      const [scenarioTeam,setScenarioTeam] = useState("");
+      const [recap,setRecap] = useState(null);
+      const [recapBusy,setRecapBusy] = useState(false);
 
       const [autoRefresh, setAutoRefresh] = useState(() => {
         if (typeof window === "undefined") return true;
@@ -141,6 +196,14 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
       const week = weeks[selectedIndex] || weeks[0] || DEFAULT_WEEKS[0];
       stateRef.current = { weeks, selectedIndex };
       const selectedKey = weekIdentityKey(week);
+      const watched = watchlists[selectedKey] || [];
+      useEffect(()=>{try { localStorage.setItem(WATCHLIST_KEY,JSON.stringify(watchlists)); } catch {setStorageError(true);}},[watchlists]);
+      useEffect(()=>{setScenarioTeam("");setOnlyWatched(false);setStatusFilter("all");},[selectedKey]);
+      useEffect(()=>()=>{if(recap) URL.revokeObjectURL(recap.url);},[recap]);
+      const toggleWatch = team => {
+        const alias = aliasForTeam(team);
+        setWatchlists(prev=>{const current=prev[selectedKey] || [];return {...prev,[selectedKey]:current.includes(alias)?current.filter(a=>a!==alias):[...current,alias]};});
+      };
 
       useEffect(() => {
         if (typeof window === "undefined") return;
@@ -183,14 +246,6 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
       useEffect(() => () => clearNotice(), [clearNotice]);
 
-      const jumpToWarnings = useCallback(() => {
-        if (typeof document === "undefined") return;
-        const el = document.getElementById("warnings-panel");
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }, []);
-
       const fetchScores = useCallback(async ({ silent = false } = {}) => {
         const state = stateRef.current;
         const currentWeek = state.weeks[state.selectedIndex];
@@ -219,7 +274,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
           });
         } catch (error) {
           if (error.name !== "AbortError") pushNotice({ type: "error", text: `Live score sync failed: ${error.message}` });
-          else if (requestRef.current === controller) pushNotice({ type: "warn", text: "Score request timed out. Try Sync Live Scores again." });
+          else if (requestRef.current === controller) pushNotice({ type: "warn", text: "Score request timed out. Try Sync scores again." });
         } finally {
           clearTimeout(timeout);
           if (requestRef.current === controller) { requestRef.current = null; setSyncing(false); }
@@ -238,24 +293,6 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
       const sums = useMemo(() => calculateWeek(week), [week]);
 
-      const animElim = useAnimatedNumber(sums.eliminated);
-      const animSurv = useAnimatedNumber(sums.survivors);
-
-      const teamLookup = useMemo(() => {
-        const map = new Map();
-        (week?.teams || []).forEach((team) => {
-          const alias = aliasForTeam(team.team);
-          if (alias && !map.has(alias)) {
-            map.set(alias, team);
-            return;
-          }
-          const key = (team.team || "").toUpperCase();
-          if (key && !map.has(key)) {
-            map.set(key, team);
-          }
-        });
-        return map;
-      }, [week]);
 
       const rosterStats = useMemo(() => {
         const entries = week?.entries || [];
@@ -293,6 +330,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
               ? w
               : {
                   ...w,
+                  localDraft: true,
                   teams: (w.teams || []).map((t) => (t.team === teamName ? { ...t, result: nextResult, manualOverride: nextResult !== RESULT.Pending } : t)),
                 }
           )
@@ -301,7 +339,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
       const addWeek = () => {
         try {
-          const nextWeek = nextWeekDefinition(weeks, week);
+          const nextWeek = {...nextWeekDefinition(weeks, week),localDraft:true};
           setWeeks(prev => [...prev, nextWeek]);
           setSelectedIndex(weeks.length);
         } catch (error) { pushNotice({ type: "warn", text: error.message }); }
@@ -311,9 +349,9 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
         if (!Number.isInteger(value) || value < 1 || (field === "season" && value < 1920) || (field === "seasonType" && value > 3) || (field === "weekNumber" && value > 18)) return;
         const next = { ...week, [field]: value };
         if (weeks.some((w,i) => i !== selectedIndex && weekIdentityKey(w) === weekIdentityKey(next))) {
-          pushNotice({ type: "warn", text: "That season/week already exists. Select its tab instead." }); return;
+          pushNotice({ type: "warn", text: "That season/week already exists. Select that week instead." }); return;
         }
-        setWeeks(prev => prev.map((w,i) => i !== selectedIndex ? w : { ...w, [field]: value, lastFetchedUtc: null, lastWarnings: [], lastSource: null, teams: w.teams.map(t => ({...t, result: RESULT.Pending, live: null, manualOverride: false})) }));
+        setWeeks(prev => prev.map((w,i) => i !== selectedIndex ? w : { ...w, localDraft: true, [field]: value, lastFetchedUtc: null, lastWarnings: [], lastSource: null, teams: w.teams.map(t => ({...t, result: RESULT.Pending, live: null, manualOverride: false})) }));
       };
 
       const previewPaste = () => {
@@ -345,7 +383,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
         if (week.requiredPicks > 1) { pushNotice({ type: "warn", text: "Use a roster for multiple-pick weeks so entries are counted once." }); return; }
         setWeeks((prev) =>
           prev.map((w, i) =>
-            i !== selectedIndex ? w : { ...w, totalsMode: "teams", entries: [], source: null, declaredGrandTotal: pastePreview.reduce((n,t) => n + t.count, 0) + w.preOut.reduce((n,p) => n + p.count, 0), teams: pastePreview.map((p) => ({ ...p, result: RESULT.Pending, live: null })) }
+            i !== selectedIndex ? w : { ...w, localDraft: true, totalsMode: "teams", entries: [], source: null, declaredGrandTotal: pastePreview.reduce((n,t) => n + t.count, 0) + w.preOut.reduce((n,p) => n + p.count, 0), teams: pastePreview.map((p) => ({ ...p, result: RESULT.Pending, live: null })) }
           )
         );
         setPasteText("");
@@ -361,7 +399,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
             if (i !== selectedIndex) return w;
             const nextEntries = rosterPreview.map((entry) => ({ ...entry }));
             const nextTeams = buildTeamsFromEntries(nextEntries, w.teams);
-            return normalizeWeek({ ...w, source: null, totalsMode: "roster", entries: nextEntries, teams: nextTeams, declaredGrandTotal: nextEntries.length + w.preOut.reduce((n,p) => n + p.count, 0) });
+            return normalizeWeek({ ...w, localDraft: true, source: null, totalsMode: "roster", entries: nextEntries, teams: nextTeams, declaredGrandTotal: nextEntries.length + w.preOut.reduce((n,p) => n + p.count, 0) });
           })
         );
         setRosterText("");
@@ -393,7 +431,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
             if (imported.length) {
               const controller = requestRef.current; requestRef.current = null; controller?.abort();
               setSyncing(false);
-              setWeeks(imported);
+              setWeeks(imported.map(w=>({...w,localDraft:true})));
               setSelectedIndex(0);
               pushNotice({ type: "success", text: "Weeks import complete." });
             }
@@ -402,50 +440,6 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
           }
         };
         reader.readAsText(file);
-      };
-
-      const renderScore = (team) => {
-        const live = team.live;
-        if (!live) return "—";
-        if (!Number.isFinite(live.teamScore) || !Number.isFinite(live.opponentScore)) return "—";
-        return `${live.teamScore} – ${live.opponentScore}`;
-      };
-
-      const renderGameLine = (team) => {
-        const live = team.live;
-        if (!live) return team._status === "final" ? "Final (manual)" : "No live data";
-        const vsAt = live.homeAway === "home" ? "vs" : "@";
-        const opponent = live.opponent || live.opponentAbbr || "TBD";
-        const statusText = live.completed
-          ? "Final"
-          : live.statusText || (live.state === "pre" ? formatGameTime(live.kickoff) : "In progress");
-        return (
-          <div>
-            <div className="font-medium">{`${vsAt} ${opponent}`}</div>
-            <div className="text-[11px] text-tecmo-white/70">{statusText}</div>
-          </div>
-        );
-      };
-
-      const renderRosterPick = (pickName) => {
-        const label = (pickName || "").trim();
-        if (!label) {
-          return <span className="text-tecmo-white/40">-</span>;
-        }
-        const alias = aliasForTeam(label);
-        const teamInfo = alias ? teamLookup.get(alias) : teamLookup.get(label.toUpperCase());
-        const unknown = Boolean(label) && !alias;
-        return (
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <TeamIcon teamName={label} />
-              <span className={unknown ? "text-[var(--tecmo-red)]" : ""}>{label}</span>
-            </div>
-            {teamInfo ? <ResultBadge result={teamInfo.result} /> : unknown ? (
-              <span className="helper-8bit text-[var(--tecmo-red)]">Unknown</span>
-            ) : null}
-          </div>
-        );
       };
 
       const tableTeams = useMemo(() => {
@@ -498,287 +492,64 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
       const autoRefreshText = autoRefresh ? "Refreshing every 60s" : "Manual sync";
 
-      return (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
-          <section className="prize-board mb-6" aria-label="League scoreboard">
-            <div className="board-topline pixel-font"><span>LMS / NFL</span><span>{week.season} SEASON</span><span>WEEK {String(week.weekNumber).padStart(2,"0")}</span></div>
-            <div className="board-prize">
-              <p className="pixel-font board-label">{week.season === 2026 ? "CASH PRIZE" : "SEASON ARCHIVE"}</p>
-              <div className="pixel-font prize-digits">{week.season === 2026 ? "$390,000" : String(week.season)}</div>
-              <p className="pixel-font board-tagline">LAST MAN STANDING</p>
-            </div>
-            <div className="board-counters">
-              <div><span className="pixel-font">ENTRIES</span><strong className="pixel-mono">{fmt(sums.grandTotal)}</strong></div>
-              <div><span className="pixel-font">REMAINING</span><strong className="pixel-mono board-green">{fmt(animSurv)}</strong></div>
-              <div><span className="pixel-font">ELIMINATED</span><strong className="pixel-mono board-red">{fmt(animElim)}</strong></div>
-            </div>
-            <div className="board-footer pixel-mono"><span>{hasLiveGames ? "● GAMES LIVE" : "● LEAGUE TRACKER"}</span><span>{autoRefresh ? "AUTO SYNC / 60 SEC" : "MANUAL SYNC"}</span></div>
-          </section>
-          <div className="sticky-sync -mx-4 sm:-mx-6 px-4 sm:px-6 py-3">
-            <div className="flex flex-wrap items-center gap-3 justify-between">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => fetchScores()}
-                  disabled={syncing}
-                  className="btn-8bit warn inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-60"
-                >
-                  {syncing ? "Syncing…" : "Sync Live Scores"}
-                </button>
-                <span className="chip">
-                  <span className="w-2 h-2 rounded-full bg-[var(--tecmo-gold)]"></span>
-                  {autoRefreshText}
-                </span>
-              </div>
-              <div className="chip text-xs">{lastSyncShort === "Never" ? "Waiting for first sync" : `Last sync: ${lastSyncShort}`}</div>
-            </div>
-          </div>
+      const exposure = useMemo(()=>new Map(week.teams.map(t=>[t.team,teamExposure(week,t.team)])),[week]);
+      const shownTeams = useMemo(()=>tableTeams.filter(t=>!onlyWatched || watched.includes(aliasForTeam(t.team))).sort((a,b)=>
+        Number(watched.includes(aliasForTeam(b.team)))-Number(watched.includes(aliasForTeam(a.team))) || Number(b._isLive)-Number(a._isLive)),[tableTeams,onlyWatched,watched]);
+      const scenario = scenarioTeam ? exposure.get(scenarioTeam) : null;
+      const applyWorkbook = imported => {
+        const key=weekIdentityKey(imported);
+        const index=weeks.findIndex(w=>weekIdentityKey(w)===key);
+        requestRef.current?.abort();requestRef.current=null;setSyncing(false);
+        setWeeks(prev=>index<0?[...prev,imported]:prev.map(w=>weekIdentityKey(w)===key?imported:w));
+        setSelectedIndex(index<0?weeks.length:index);
+        pushNotice({type:"success",text:`${imported.season} Week ${imported.weekNumber}: ${fmt(imported.entries.length)} entries applied to this browser.`,persist:true});
+      };
+      const openRecap = async()=>{
+        setRecapBusy(true);
+        try {
+          const model=recapModel(week);
+          const blob=await createRecapImage(model);
+          setRecap({model,blob,url:URL.createObjectURL(blob),fileName:`LMS-${model.season}-Week-${model.weekNumber}-recap.png`});
+        } catch(error) {pushNotice({type:"error",text:error.message});}
+        finally {setRecapBusy(false);}
+      };
 
-          {/* Header + week tabs */}
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-            <div>
-              <h1 className="pixel-font text-tecmo-gold text-xl md:text-2xl">Last Man Standing – NFL</h1>
-              <p className="helper-8bit mt-1">Live elimination tracker with one-click ESPN score sync.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <select aria-label="Season" className="select-8bit px-3 py-2" value={week.season} onChange={e => setSelectedIndex(weeks.findIndex(w => w.season === Number(e.target.value)))}>
-                {[...new Set(weeks.map(w => w.season))].sort((a,b) => b-a).map(season => <option key={season} value={season}>{season}{season < 2026 ? " Archive" : " Season"}</option>)}
-              </select>
-              {weeks.map((w, i) => w.season === week.season && (
-                <Pill key={i} active={i === selectedIndex} onClick={() => setSelectedIndex(i)}>
-                  {w.name}
-                </Pill>
-              ))}
-              <button
-                onClick={() => addWeek()}
-                className="btn-8bit secondary px-3 py-1.5 text-xs"
-              >
-                + Add Week
-              </button>
-            </div>
-          </div>
-
-          {/* Quick stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-            <StatCard title="Grand Total" value={sums.grandTotal} sub="Entries at week lock" />
-            <StatCard title="Pre-Eliminated" value={sums.preOutTotal} sub="No pick • Rule violations" />
-            <StatCard title="Eliminated (Live)" value={animElim} sub={`${fmt(sums.losers)} from losses/pushes`} />
-            <StatCard title="Survivors" value={animSurv} sub={`${fmt(sums.pending)} pending · ${fmt(sums.safe)} safe`} />
-          </div>
-
-          {storageError && <p role="alert" className="panel-8bit notice-warn p-3 mt-4">Browser storage is unavailable. Export JSON to keep your changes.</p>}
-          {sums.warnings.map(warning => <p key={warning} role="alert" className="panel-8bit notice-warn p-3 mt-4">{warning}</p>)}
-          <p className="helper-8bit mt-3">{week.source ? `Source: ${week.source}. ` : ""}Remaining includes entries with games still pending. Ties count as losses.</p>
-          {/* Progress */}
-          <div className="mt-4">
-            <div className="progress-8bit overflow-hidden">
-              <div className="bar" style={{ width: `${Math.min(100, sums.pct).toFixed(2)}%` }}></div>
-            </div>
-            <div className="helper-8bit mt-1">{sums.pct.toFixed(1)}% eliminated</div>
-          </div>
-
-          {/* Sync notice */}
-          {syncNotice && (
-            <div
-              role="alert"
-              onClick={() => {
-                if (syncNotice.action === "jump-to-warnings") jumpToWarnings();
-              }}
-              className={`mt-6 panel-8bit px-4 py-3 text-sm flex items-center gap-3 ${
-                syncNotice.type === "error"
-                  ? "notice-error"
-                  : syncNotice.type === "warn"
-                  ? "notice-warn"
-                  : syncNotice.type === "success"
-                  ? "notice-success"
-                  : "notice-info"
-              } ${syncNotice.action ? "cursor-pointer" : ""}`}
-            >
-              <span className="pixel-font text-[11px] uppercase">
-                {syncNotice.type === "error" ? "[!]" : syncNotice.type === "warn" ? "[!]" : syncNotice.type === "success" ? "[✓]" : "[i]"}
-              </span>
-              <span>{syncNotice.text}</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-            <div className="lg:col-span-2">
-              <div className="panel-8bit rounded-md overflow-hidden">
-                <div className="px-5 py-4 border-b border-white/20 space-y-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-2">
-                      <h2 className="pixel-font text-sm">Picks ({week.name})</h2>
-                      {rosterStats.hasSecondPick && (
-                        <span className="badge-8bit badge-pending">{rosterStats.hasThirdPick ? "Three Picks" : "Two Picks"}</span>
-                      )}
-                    </div>
-                    {hasRoster && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="helper-8bit text-xs">View</span>
-                        <button
-                          className={`pill-8bit ${picksView === "teams" ? "active" : ""}`}
-                          onClick={() => setPicksView("teams")}
-                        >
-                          Team Totals
-                        </button>
-                        <button
-                          className={`pill-8bit ${picksView === "roster" ? "active" : ""}`}
-                          onClick={() => setPicksView("roster")}
-                        >
-                          Roster
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  {picksView === "teams" ? (
-                    <div className="flex flex-wrap gap-2 justify-between">
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { key: "all", label: "All" },
-                          { key: "pending", label: "Pending" },
-                          { key: "live", label: "Live" },
-                          { key: "final", label: "Final" },
-                        ].map((f) => (
-                          <button
-                            key={f.key}
-                            className={`pill-8bit ${statusFilter === f.key ? "active" : ""}`}
-                            onClick={() => setStatusFilter(f.key)}
-                          >
-                            {f.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="helper-8bit text-xs">Sort</span>
-                        <button
-                          className={`pill-8bit ${sortMode === "picks" ? "active" : ""}`}
-                          onClick={() => setSortMode("picks")}
-                        >
-                          Picks ↓
-                        </button>
-                        <button
-                          className={`pill-8bit ${sortMode === "alpha" ? "active" : ""}`}
-                          onClick={() => setSortMode("alpha")}
-                        >
-                          A–Z
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="helper-8bit">
-                        Entries: {fmt(rosterStats.entries)} / Picks: {fmt(rosterStats.picks)}
-                      </div>
-                      <input aria-label="Search entries" className="input-8bit px-3 py-2" placeholder="Find your entry…" value={rosterSearch} onChange={e => { setRosterSearch(e.target.value); setRosterPage(0); }} />
-                    </div>
-                  )}
-                </div>
-                <div className="table-scroll overflow-x-auto">
-                  {picksView === "roster" ? (
-                    <table className="w-full text-sm table-8bit">
-                      <thead>
-                        <tr className="text-left">
-                          <th className="px-4 py-3">Name</th>
-                          <th className="px-4 py-3">Pick 1</th>
-                          {rosterStats.hasSecondPick && <th className="px-4 py-3">Pick 2</th>}
-                          {rosterStats.hasThirdPick && <th className="px-4 py-3">Pick 3</th>}
-                          <th className="px-4 py-3">Entry Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {visibleRoster.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center">No matching entries.</td></tr>}
-                        {visibleRoster.map((entry, idx) => (
-                          <tr key={`${entry.name || "entry"}-${idx}`}>
-                            <td className="px-4 py-3 font-medium">{entry.name || "-"}</td>
-                            <td className="px-4 py-3">{renderRosterPick(entry.pick1)}</td>
-                            {rosterStats.hasSecondPick && (
-                              <td className="px-4 py-3">{renderRosterPick(entry.pick2)}</td>
-                            )}
-                            {rosterStats.hasThirdPick && <td className="px-4 py-3">{renderRosterPick(entry.pick3)}</td>}
-                            <td className="px-4 py-3">{entry.preOutReason || entryStatus(entry, rosterResults, week.requiredPicks)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <table className="w-full text-sm table-8bit">
-                      <thead>
-                        <tr className="text-left">
-                          <th className="px-4 py-3">Team</th>
-                          <th className="px-4 py-3 text-right">Picks</th>
-                          <th className="px-4 py-3 text-center">Result</th>
-                          <th className="px-4 py-3 text-center">Score</th>
-                          <th className="px-4 py-3">Game Status</th>
-                          <th className="px-4 py-3 text-right">Override</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {tableTeams.map((t, idx) => {
-                          const rowTone = t._isLive
-                            ? t.result === RESULT.Lose
-                              ? "table-row-lose"
-                              : t.result === RESULT.Win
-                              ? "table-row-win"
-                              : t.result === RESULT.Push
-                              ? "table-row-push"
-                              : "table-row-live"
-                            : "";
-                          return (
-                          <tr
-                            key={t.team + idx}
-                            className={rowTone}
-                          >
-                            <td className="px-4 py-3 font-medium">
-                              <div className="flex items-center gap-2">
-                                <TeamIcon teamName={t.team} />
-                                <span>{t.team}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 tabular-nums text-right">{fmt(Number(t.count) || 0)}</td>
-                            <td className="px-4 py-3 text-center"><ResultBadge result={t.result} /></td>
-                            <td className="px-4 py-3 tabular-nums text-center">{renderScore(t)}</td>
-                            <td className="px-4 py-3">
-                              <div className="space-y-1">
-                                <LiveStatus live={t.live} />
-                                {renderGameLine(t)}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <ResultControl value={t.result} onChange={(value) => setTeamResult(t.team, value)} />
-                            </td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-
-                {picksView === "roster" && <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-3">
-                  <span className="helper-8bit">{fmt(filteredRoster.length)} entries · Page {currentPage + 1} of {pageCount}</span>
-                  <div className="flex gap-3">
-                    <button className="btn-8bit secondary px-3 py-2 disabled:opacity-40" disabled={currentPage === 0} onClick={() => setRosterPage(currentPage - 1)}>Previous</button>
-                    <button className="btn-8bit secondary px-3 py-2 disabled:opacity-40" disabled={currentPage >= pageCount - 1} onClick={() => setRosterPage(currentPage + 1)}>Next</button>
-                  </div>
-                </div>}
-                <div className="px-5 py-4 border-t border-white/20">
-                  <h3 className="pixel-font text-xs mb-2 uppercase">Already Out</h3>
-                  <ul className="space-y-1 text-sm">
-                    {[...(week.preOut || []), ...Object.entries((week.entries || []).reduce((counts,e) => { if(e.preOutReason) counts[e.preOutReason] = (counts[e.preOutReason] || 0) + 1; return counts; }, {})).map(([label,count]) => ({label,count}))].map((p, i) => (
-                      <li key={i} className="flex items-center justify-between">
-                        <span className="text-tecmo-white/80">{p.label}</span>
-                        <span className="font-medium tabular-nums">{fmt(Number(p.count) || 0)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-
+      return <div className="app-shell">
+        <a className="skip-link" href="#main-content">Skip to games</a>
+        <header className="app-header">
+          <div><h1 className="pixel-font">LMS NFL</h1><p>Last Man Standing · {week.season}</p></div>
+          <nav aria-label="Display mode" className="mode-switch"><button aria-pressed={!commissioner} onClick={()=>setCommissioner(false)}>Viewer</button><button aria-pressed={commissioner} onClick={()=>setCommissioner(true)}>Commissioner</button></nav>
+        </header>
+        {!commissioner && <section className="prize-board" aria-label="League scoreboard">
+          <div className="board-topline"><span>{week.season} SEASON</span><span>WEEK {String(week.weekNumber).padStart(2,"0")}</span></div>
+          <div className="board-prize"><h2 className="board-label">{week.season===2026?"CASH PRIZE":"SEASON ARCHIVE"}</h2><div className="pixel-font prize-digits">{week.season===2026?"$390,000":week.season}</div><p className="board-tagline">{fmt(sums.grandTotal)} entries at week lock</p></div>
+        </section>}
+        {commissioner && <section className="workspace-intro"><h2 className="pixel-font">Commissioner workspace</h2><p>Imports and edits stay in this browser. This is a local workspace, not an authenticated publishing console. Export a backup before making changes.</p></section>}
+        <section className="status-strip" aria-label="Entry status summary" aria-describedby="status-definition">
+          <div><span>Remaining</span><strong className="pixel-mono board-green">{fmt(sums.survivors)}</strong></div>
+          <div><span>Safe</span><strong className="pixel-mono board-green">{fmt(sums.safe)}</strong></div>
+          <div><span>Pending</span><strong className="pixel-mono gold">{fmt(sums.pending)}</strong></div>
+          <div><span>Out</span><strong className="pixel-mono board-red">{fmt(sums.eliminated)}</strong></div>
+        </section>
+        <p id="status-definition" className="status-definition">Remaining includes safe and pending entries. Out includes pre-eliminated entries.</p>
+        <div className="week-toolbar"><div className="week-controls"><label className="sr-only" htmlFor="season-select">Season</label><select id="season-select" aria-label="Season" value={week.season} onChange={e=>setSelectedIndex(weeks.findIndex(w=>w.season===Number(e.target.value)))}>{[...new Set(weeks.map(w=>w.season))].sort((a,b)=>b-a).map(year=><option key={year} value={year}>{year}{year<2026?" Archive":" Season"}</option>)}</select>
+          <label className="sr-only" htmlFor="week-select">Week</label><select id="week-select" aria-label="Week" value={selectedIndex} onChange={e=>setSelectedIndex(Number(e.target.value))}>{weeks.map((w,i)=>w.season===week.season?<option key={i} value={i}>{w.name}</option>:null)}</select></div>
+          <div className="action-row"><button className="btn-8bit warn" onClick={()=>fetchScores()} disabled={syncing}>{syncing?"Syncing…":"Sync scores"}</button><button className="btn-8bit secondary" onClick={openRecap} disabled={recapBusy || !sums.grandTotal || sums.warnings.length>0}>{recapBusy?"Creating recap…":"Weekly recap"}</button></div>
+        </div>
+        <div className="sync-status"><span>{hasLiveGames?"Games live · ":""}{lastSyncShort==="Never"?"Scores not synced yet":`Updated ${lastSyncShort}`}</span><label className="check-row"><input type="checkbox" checked={autoRefresh} onChange={e=>setAutoRefresh(e.target.checked)}/>Auto-refresh every 60s</label></div>
+        {week.localDraft && <p className="local-copy">Local working copy · edits have not been published to the shared league site.</p>}
+        {storageError && <p role="alert" className="warning-text">Browser storage is unavailable. Your watchlist and edits may not survive a reload.</p>}
+        {sums.warnings.map(w=><p key={w} role="alert" className="warning-text">{w}</p>)}
+        {syncNotice && <div role="status" className={`notice notice-${syncNotice.type}`}><span>{syncNotice.text}</span><button aria-label="Dismiss notice" onClick={()=>setSyncNotice(null)}>Dismiss</button></div>}
+        {(week.lastWarnings || []).length>0 && <details id="warnings-panel" className="warning-text"><summary>{week.lastWarnings.length} teams need score review</summary>{week.lastWarnings.map(w=><p key={w}>{w}</p>)}</details>}
+        <details className="week-details"><summary>Week details & counting rules</summary><p>{fmt(sums.grandTotal)} entries at lock. {fmt(sums.losers)} out from team losses and {fmt(sums.preOutTotal)} pre-eliminated. Remaining includes safe and pending entries. Ties count as losses. {week.requiredPicks} pick{week.requiredPicks===1?"":"s"} required per entry.</p>{week.source && <p>Source: {week.source}</p>}</details>
+        {commissioner && <div className="commissioner-content"><WorkbookImporter season={week.season} onApply={applyWorkbook} onNotice={pushNotice}/>
             <div className="space-y-6">
               <div className="panel-8bit p-5 rounded-md">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="pixel-font text-sm uppercase">Manage Weeks & Picks</h3>
+                  <h3 className="pixel-font text-sm uppercase">Advanced editing & backups</h3>
                   <button
+                    aria-expanded={manageOpen}
                     onClick={() => setManageOpen((open) => !open)}
                     className="btn-8bit secondary px-3 py-1 text-xs"
                   >
@@ -795,7 +566,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
                       onChange={(e) => {
                         const value = e.target.value;
                         setWeeks((prev) =>
-                          prev.map((w, i) => (i === selectedIndex ? { ...w, name: value } : w))
+                          prev.map((w, i) => (i === selectedIndex ? { ...w, localDraft: true, name: value } : w))
                         );
                       }}
                     />
@@ -912,7 +683,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
                         const value = Number(e.target.value);
                         setWeeks((prev) =>
                           prev.map((w, i) =>
-                            i === selectedIndex ? { ...w, declaredGrandTotal: nonnegativeCount(value) } : w
+                            i === selectedIndex ? { ...w, localDraft: true, declaredGrandTotal: nonnegativeCount(value) } : w
                           )
                         );
                       }}
@@ -964,50 +735,6 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
                     </label>
                   </div>
 
-                  <div className="panel-8bit p-3 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => fetchScores()}
-                        disabled={syncing}
-                        className={`btn-8bit warn inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-60`}
-                      >
-                        {syncing ? "Syncing…" : "Sync Live Scores"}
-                      </button>
-                      <label className="inline-flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
-                          className="accent-[var(--tecmo-gold)]"
-                          checked={autoRefresh}
-                          onChange={(e) => setAutoRefresh(e.target.checked)}
-                        />
-                        <span className="helper-8bit">Auto refresh every 60s</span>
-                      </label>
-                    </div>
-                    <div className="helper-8bit">
-                      Source: ESPN public scoreboard API. Last sync:{" "}
-                      {week.lastFetchedUtc
-                        ? formatPacific(week.lastFetchedUtc, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                            second: "2-digit",
-                            timeZoneName: "short",
-                          })
-                        : "never"}
-                    </div>
-                    {(week.lastWarnings || []).length > 0 && (
-                      <div id="warnings-panel" className="panel-8bit notice-warn px-3 py-2 text-[11px]">
-                        <div className="pixel-font text-[11px]">Teams needing manual review</div>
-                        <ul className="mt-1 space-y-1">
-                          {week.lastWarnings.map((w, i) => (
-                            <li key={i}>• {w}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-
                   <label className="block">
                     <span className="helper-8bit">Additional Pre-Out (outside the roster only; label:count)</span>
                     <textarea
@@ -1027,7 +754,7 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
                             };
                           });
                         setWeeks((prev) =>
-                          prev.map((w, i) => (i === selectedIndex ? { ...w, preOut } : w))
+                          prev.map((w, i) => (i === selectedIndex ? { ...w, localDraft: true, preOut } : w))
                         );
                       }}
                     ></textarea>
@@ -1042,19 +769,28 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
                   <li>Pick a week above (add the next week when ready).</li>
                   <li>Paste your picks (Team,Count per line), preview, then apply.</li>
                   <li>For multi-pick weeks, paste Name and up to three picks. Each eliminated entry counts once.</li>
-                  <li>Hit <span className="pixel-font">Sync Live Scores</span> to pull ESPN results.</li>
+                  <li>Hit <span className="font-semibold">Sync scores</span> to pull ESPN results.</li>
                   <li>Manual overrides still work — ties count as losses when syncing.</li>
                   <li>Export/Import JSON for off-line backups between weeks.</li>
                 </ol>
               </div>
             </div>
-          </div>
-
-          <div className="mt-10 text-center text-xs text-tecmo-white/70">
-            Built for your LMS pool • Powered by ESPN live scores • Tecmo skin
-          </div>
-        </div>
-      );
+        </div>}
+        <main id="main-content" tabIndex="-1">
+          <section className="watchlist-panel" aria-labelledby="watchlist-heading"><div className="section-heading"><h2 id="watchlist-heading" className="pixel-font">My Picks</h2><button className="filter-button" aria-pressed={onlyWatched} onClick={()=>setOnlyWatched(!onlyWatched)}>{onlyWatched?"Show all teams":`Only my picks (${watched.length})`}</button></div>
+            <p>{watched.length?"Your watched teams appear first. This list is saved on this device.":"Use + My Picks on a game to follow your teams here. This does not submit a league pick."}</p>
+            {watched.length>0 && <div className="watch-chips">{watched.map(alias=><button key={alias} aria-label={`Remove ${TEAM_DISPLAY[alias]} from My Picks`} onClick={()=>toggleWatch(alias)}>{TEAM_DISPLAY[alias]} <span aria-hidden="true">×</span></button>)}</div>}
+          </section>
+          <div className="section-heading game-heading"><h2 className="pixel-font">Games · {week.name}</h2><label>Sort<select aria-label="Sort games" value={sortMode} onChange={e=>setSortMode(e.target.value)}><option value="picks">Most picked</option><option value="alpha">Team A–Z</option></select></label></div>
+          <div className="game-filters" aria-label="Game status filters">{[{key:"all",label:"All"},{key:"pending",label:"Upcoming"},{key:"live",label:"Live"},{key:"final",label:"Final"}].map(f=><button key={f.key} aria-pressed={statusFilter===f.key} onClick={()=>setStatusFilter(f.key)}>{f.label}</button>)}</div>
+          <div className="game-grid">{shownTeams.map(t=><GameCard key={t.team} team={t} week={week} watched={watched.includes(aliasForTeam(t.team))} onWatch={()=>toggleWatch(t.team)} commissioner={commissioner} onResult={value=>setTeamResult(t.team,value)} exposure={exposure.get(t.team)}/>)}</div>
+          {!shownTeams.length && <div className="empty-state"><h3>No teams to show</h3><p>{onlyWatched?"Add teams to My Picks or show all teams.":"Try a different status filter. If this week has no picks yet, import them in Commissioner view."}</p><button className="btn-8bit secondary" onClick={()=>{setOnlyWatched(false);setStatusFilter("all");}}>Show all teams</button></div>}
+          <details className="what-if panel-8bit"><summary>What if a team loses?</summary><p>This scenario changes only the selected pending team to a loss. Other results stay as they are; it is not a prediction.</p><label>Team to simulate<select value={scenarioTeam} onChange={e=>setScenarioTeam(e.target.value)}><option value="">Choose a pending team</option>{week.teams.filter(t=>t.result===RESULT.Pending).map(t=><option key={t.team}>{t.team}</option>)}</select></label>{scenario && (scenario.exact?<p className="scenario-result"><strong>{fmt(scenario.additionalOut)}</strong> additional entries out · <strong>{fmt(scenario.remaining)}</strong> remaining</p>:<p>Import the entry roster to calculate overlap in a multiple-pick week.</p>)}</details>
+          {commissioner && hasRoster && <details className="roster-details"><summary>Entry roster on this device ({fmt(week.entries.length)})</summary><label>Search entries<input value={rosterSearch} onChange={e=>{setRosterSearch(e.target.value);setRosterPage(0);}} /></label><div className="preview-table"><table><thead><tr><th>Name</th><th>Picks</th><th>Status</th></tr></thead><tbody>{visibleRoster.map((e,i)=><tr key={i}><td>{e.name}</td><td>{[e.pick1,e.pick2,e.pick3].filter(Boolean).join(", ") || "—"}</td><td>{e.preOutReason || entryStatus(e,rosterResults,week.requiredPicks)}</td></tr>)}</tbody></table></div><div className="action-row"><button disabled={currentPage===0} onClick={()=>setRosterPage(currentPage-1)}>Previous</button><span>Page {currentPage+1} of {pageCount}</span><button disabled={currentPage>=pageCount-1} onClick={()=>setRosterPage(currentPage+1)}>Next</button></div></details>}
+        </main>
+        <footer>Built for your LMS pool · ESPN scores · Ties are losses</footer>
+        {recap && <RecapDialog recap={recap} onClose={()=>setRecap(null)} onNotice={pushNotice}/>}
+      </div>;
     }
 
     const root = ReactDOM.createRoot(document.getElementById("root"));

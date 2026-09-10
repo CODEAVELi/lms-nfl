@@ -6,24 +6,6 @@ const {
   useRef,
   useCallback
 } = React;
-function useAnimatedNumber(value, duration = 600) {
-  const [display, setDisplay] = useState(value);
-  useEffect(() => {
-    const from = display,
-      to = value,
-      start = performance.now();
-    let raf;
-    const tick = now => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setDisplay(Math.round(from + (to - from) * eased));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-  return display;
-}
 function TeamIcon({
   teamName
 }) {
@@ -46,43 +28,10 @@ function TeamIcon({
     }
   }));
 }
-const StatCard = ({
-  title,
-  value,
-  sub
-}) => React.createElement("div", {
-  className: "panel-8bit p-4"
-}, React.createElement("div", {
-  className: "pixel-font text-[10px] text-tecmo-white/80 uppercase"
-}, title), React.createElement("div", {
-  className: "mt-2 pixel-mono text-2xl"
-}, fmt(value)), sub !== undefined && React.createElement("div", {
-  className: "mt-1 helper-8bit"
-}, sub));
-const Pill = ({
-  active,
-  children,
-  onClick
-}) => React.createElement("button", {
-  onClick: onClick,
-  className: `pill-8bit ${active ? "active" : ""}`
-}, children);
-const ResultBadge = ({
-  result
-}) => {
-  const map = {
-    [RESULT.Pending]: "badge-pending",
-    [RESULT.Win]: "badge-win",
-    [RESULT.Lose]: "badge-lose",
-    [RESULT.Push]: "badge-push"
-  };
-  return React.createElement("span", {
-    className: `badge-8bit ${map[result]}`
-  }, result);
-};
 const ResultControl = ({
   value,
-  onChange
+  onChange,
+  teamName
 }) => React.createElement("div", {
   className: "flex items-center gap-2"
 }, React.createElement("div", {
@@ -93,6 +42,7 @@ const ResultControl = ({
   onClick: () => onChange(opt),
   title: opt === RESULT.Push ? "Push counts as a loss" : undefined
 }, opt === RESULT.Push ? "Push" : opt))), React.createElement("select", {
+  "aria-label": `Result override for ${teamName}`,
   className: "sm:hidden select-8bit px-2 py-1 text-xs",
   value: value,
   onChange: e => onChange(e.target.value)
@@ -100,20 +50,289 @@ const ResultControl = ({
   key: opt,
   value: opt
 }, opt === RESULT.Push ? "Push (Lose)" : opt))));
-const LiveStatus = ({
-  live
-}) => {
-  if (!live) return null;
-  const isLive = !live.completed && live.state === "in";
-  if (!isLive) return null;
-  return React.createElement("span", {
-    className: "live-badge"
+function WorkbookImporter({
+  season,
+  onApply,
+  onNotice
+}) {
+  const [sheets, setSheets] = useState(null);
+  const [sheetName, setSheetName] = useState("");
+  const [number, setNumber] = useState(1);
+  const [year, setYear] = useState(season);
+  const [skipBlank, setSkipBlank] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const [acknowledge, setAcknowledge] = useState(false);
+  const inputRef = useRef(null);
+  const fileRequest = useRef(0);
+  useEffect(() => () => {
+    fileRequest.current++;
+  }, []);
+  const detected = useMemo(() => sheets ? detectWorkbookSheets(sheets) : [], [sheets]);
+  const preview = useMemo(() => {
+    if (!sheets || !sheetName) return null;
+    try {
+      return workbookPreview(sheets, sheetName, number, Number(year), skipBlank);
+    } catch (error) {
+      return {
+        errors: [error.message],
+        warnings: []
+      };
+    }
+  }, [sheets, sheetName, number, year, skipBlank]);
+  useEffect(() => setAcknowledge(false), [preview]);
+  const readFile = async file => {
+    const request = ++fileRequest.current;
+    setBusy(true);
+    setSheets(null);
+    setFileName("");
+    try {
+      const next = await readWorkbookFile(file);
+      if (request !== fileRequest.current) return;
+      const candidates = detectWorkbookSheets(next);
+      if (!candidates.length) throw new Error("No Name and Week columns found. Use the LMS workbook format.");
+      const first = candidates.find(s => s.weeks.some(w => w.populated)) || candidates[0];
+      const populated = first.weeks.filter(w => w.populated);
+      setSheets(next);
+      setSheetName(first.name);
+      setNumber((populated.length ? populated : first.weeks).at(-1).number);
+      setYear(season);
+      setSkipBlank(false);
+      setFileName(file.name);
+    } catch (error) {
+      if (request === fileRequest.current) onNotice({
+        type: "error",
+        text: error.message
+      });
+    } finally {
+      if (request === fileRequest.current) setBusy(false);
+    }
+  };
+  const selected = detected.find(s => s.name === sheetName);
+  return React.createElement("section", {
+    className: "panel-8bit workspace-panel",
+    "aria-labelledby": "workbook-heading"
+  }, React.createElement("h2", {
+    id: "workbook-heading",
+    className: "pixel-font"
+  }, "Import weekly spreadsheet"), React.createElement("p", null, "Review the detected week, picks and exceptions before replacing that week’s local working copy. The file stays on this device."), React.createElement("div", {
+    className: "drop-zone",
+    onDragOver: e => e.preventDefault(),
+    onDrop: e => {
+      e.preventDefault();
+      if (!busy && e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+    }
+  }, React.createElement("label", {
+    htmlFor: "workbook-file"
+  }, busy ? "Reading workbook…" : "Drop an .xlsx workbook here, or choose a file"), React.createElement("input", {
+    ref: inputRef,
+    id: "workbook-file",
+    type: "file",
+    accept: ".xlsx",
+    disabled: busy,
+    onChange: e => {
+      if (e.target.files?.[0]) readFile(e.target.files[0]);
+      e.target.value = "";
+    }
+  })), sheets && React.createElement(React.Fragment, null, React.createElement("p", {
+    className: "source-line"
+  }, fileName), React.createElement("div", {
+    className: "import-options"
+  }, React.createElement("label", null, "Sheet", React.createElement("select", {
+    value: sheetName,
+    onChange: e => {
+      setSheetName(e.target.value);
+      const next = detected.find(s => s.name === e.target.value);
+      setNumber((next.weeks.filter(w => w.populated).at(-1) || next.weeks[0]).number);
+    }
+  }, detected.map(s => React.createElement("option", {
+    key: s.name
+  }, s.name)))), React.createElement("label", null, "Import season", React.createElement("input", {
+    type: "number",
+    min: "1920",
+    max: "2200",
+    value: year,
+    onChange: e => setYear(e.target.value)
+  })), React.createElement("label", null, "Import week", React.createElement("select", {
+    value: number,
+    onChange: e => setNumber(Number(e.target.value))
+  }, selected?.weeks.map(w => React.createElement("option", {
+    key: w.number,
+    value: w.number
+  }, "Week ", w.number, w.populated ? "" : " (blank)"))))), React.createElement("label", {
+    className: "check-row"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: skipBlank,
+    onChange: e => setSkipBlank(e.target.checked)
+  }), "Exclude rows with no picks in this week (for previously eliminated entries)"), preview?.week && React.createElement(React.Fragment, null, React.createElement("div", {
+    className: "import-totals"
+  }, React.createElement("span", null, React.createElement("strong", null, fmt(preview.week.entries.length)), " entries"), React.createElement("span", null, React.createElement("strong", null, fmt(preview.pickCount)), " picks"), React.createElement("span", null, React.createElement("strong", null, preview.week.requiredPicks), " per entry"), React.createElement("span", null, React.createElement("strong", null, preview.noPickCount), " pre-out")), React.createElement("p", {
+    className: preview.errors.length ? "error-text" : "success-text"
+  }, preview.reconciliation), React.createElement("div", {
+    className: "preview-table"
+  }, React.createElement("table", null, React.createElement("caption", null, "Detected team totals"), React.createElement("thead", null, React.createElement("tr", null, React.createElement("th", null, "Team"), React.createElement("th", null, "Picks"))), React.createElement("tbody", null, preview.week.teams.map(t => React.createElement("tr", {
+    key: t.team
+  }, React.createElement("td", null, t.team), React.createElement("td", null, fmt(t.count))))))), React.createElement("details", null, React.createElement("summary", null, "Review first 10 entries on this device"), React.createElement("div", {
+    className: "preview-table"
+  }, React.createElement("table", null, React.createElement("thead", null, React.createElement("tr", null, React.createElement("th", null, "Entry"), React.createElement("th", null, "Picks / exception"))), React.createElement("tbody", null, preview.week.entries.slice(0, 10).map((e, i) => React.createElement("tr", {
+    key: i
+  }, React.createElement("td", null, e.name), React.createElement("td", null, e.preOutReason || [e.pick1, e.pick2, e.pick3].filter(Boolean).join(", ") || "Pending — no picks")))))))), preview?.warnings.map(w => React.createElement("p", {
+    key: w,
+    className: "warning-text"
+  }, w)), preview?.errors.slice(0, 8).map(e => React.createElement("p", {
+    key: e,
+    role: "alert",
+    className: "error-text"
+  }, e)), preview?.errors.length > 8 && React.createElement("p", {
+    className: "error-text"
+  }, preview.errors.length - 8, " additional errors. Correct the workbook before applying."), React.createElement("label", {
+    className: "check-row"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: acknowledge,
+    onChange: e => setAcknowledge(e.target.checked)
+  }), "I reviewed the season, week and counts. Replace this week’s local working copy."), React.createElement("button", {
+    className: "btn-8bit",
+    disabled: busy || !preview?.week || preview.errors.length > 0 || !acknowledge,
+    onClick: () => {
+      onApply({
+        ...preview.week,
+        source: fileName
+      });
+      setSheets(null);
+      setFileName("");
+    }
+  }, "Apply reviewed week")));
+}
+function RecapDialog({
+  recap,
+  onClose,
+  onNotice
+}) {
+  const dialogRef = useRef(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    dialogRef.current?.showModal();
+    return () => {
+      dialogRef.current?.close();
+      previous?.focus?.();
+    };
+  }, []);
+  const download = () => {
+    const a = document.createElement("a");
+    a.href = recap.url;
+    a.download = recap.fileName;
+    a.click();
+  };
+  const share = async () => {
+    try {
+      const file = new File([recap.blob], recap.fileName, {
+        type: "image/png"
+      });
+      if (navigator.canShare?.({
+        files: [file]
+      }) && navigator.share) await navigator.share({
+        files: [file],
+        title: `LMS ${recap.model.season} Week ${recap.model.weekNumber}`
+      });else {
+        download();
+        onNotice({
+          type: "info",
+          text: "Recap downloaded. Attach the PNG to your group chat."
+        });
+      }
+    } catch (error) {
+      if (error.name !== "AbortError") onNotice({
+        type: "error",
+        text: "Sharing failed. Use Download PNG instead."
+      });
+    }
+  };
+  return React.createElement("dialog", {
+    className: "recap-dialog",
+    ref: dialogRef,
+    onCancel: e => {
+      e.preventDefault();
+      onClose();
+    },
+    "aria-labelledby": "recap-title"
+  }, React.createElement("div", {
+    className: "section-heading"
+  }, React.createElement("h2", {
+    className: "pixel-font",
+    id: "recap-title"
+  }, "Weekly recap"), React.createElement("button", {
+    className: "btn-8bit secondary",
+    onClick: onClose,
+    "aria-label": "Close recap"
+  }, "Close")), React.createElement("p", null, "A snapshot of this week’s current results. Participant names are never included."), React.createElement("img", {
+    src: recap.url,
+    alt: `Week ${recap.model.weekNumber}: ${fmt(recap.model.remaining)} remaining, ${fmt(recap.model.safe)} safe, ${fmt(recap.model.pending)} pending, ${fmt(recap.model.out)} out.`
+  }), React.createElement("div", {
+    className: "action-row"
+  }, React.createElement("button", {
+    className: "btn-8bit",
+    onClick: download
+  }, "Download PNG"), React.createElement("button", {
+    className: "btn-8bit secondary",
+    onClick: share
+  }, "Share recap")));
+}
+function GameCard({
+  team,
+  week,
+  watched,
+  onWatch,
+  commissioner,
+  onResult,
+  exposure
+}) {
+  const live = team.live;
+  const status = team.result === RESULT.Win ? "Safe" : team.result === RESULT.Lose ? "Out" : "Pending";
+  return React.createElement("article", {
+    className: `game-card ${watched ? "watched" : ""} ${team._isLive ? "game-live" : ""}`,
+    "aria-label": `${team.team} game`
+  }, React.createElement("div", {
+    className: "card-top"
   }, React.createElement("span", {
-    className: "w-2 h-2 rounded-full bg-[var(--tecmo-gold)] animate-pulse"
-  }), React.createElement("span", null, "Live"), React.createElement("span", {
-    className: "pixel-mono text-[11px]"
-  }, live.statusText || "In progress"));
-};
+    className: `status-tag status-${status.toLowerCase()}`
+  }, team._isLive ? `Live · ${status}` : status), React.createElement("button", {
+    className: "watch-button",
+    "aria-pressed": watched,
+    "aria-label": `${watched ? "Unwatch" : "Watch"} ${team.team}`,
+    onClick: onWatch
+  }, watched ? "Watching" : "+ My Picks")), React.createElement("div", {
+    className: "matchup"
+  }, React.createElement("div", {
+    className: "team-heading"
+  }, React.createElement(TeamIcon, {
+    teamName: team.team
+  }), React.createElement("h3", null, team.team)), React.createElement("strong", {
+    className: "game-score"
+  }, live && live.state !== "pre" && live.teamScore !== null && live.opponentScore !== null ? `${live.teamScore} – ${live.opponentScore}` : "—")), React.createElement("p", {
+    className: "opponent"
+  }, live ? `${live.homeAway === "home" ? "vs" : "@"} ${live.opponent || live.opponentAbbr}` : "Matchup awaiting score sync"), React.createElement("p", {
+    className: "game-time"
+  }, live?.completed ? "Final" : live?.state === "pre" ? formatGameTime(live.kickoff) : live?.statusText || "Kickoff time unavailable", team.manualOverride ? " · Manual result" : ""), React.createElement("div", {
+    className: "exposure-line"
+  }, React.createElement("strong", null, fmt(exposure.count), " entries"), React.createElement("span", null, exposure.percent.toFixed(1), "% of starting field")), React.createElement("div", {
+    className: "exposure-track",
+    "aria-hidden": "true"
+  }, React.createElement("span", {
+    style: {
+      width: `${Math.min(100, exposure.percent)}%`
+    }
+  })), team.result === RESULT.Pending && React.createElement("p", {
+    className: "loss-impact"
+  }, exposure.exact ? `If they lose: ${fmt(exposure.additionalOut)} additional entries out.` : "Load the entry roster to calculate exact eliminations."), commissioner && React.createElement("div", {
+    className: "card-override"
+  }, React.createElement("span", null, "Result override"), React.createElement(ResultControl, {
+    teamName: team.team,
+    value: team.result,
+    onChange: onResult
+  }), React.createElement("small", null, "Pending returns control to ESPN on the next sync.")));
+}
 function App() {
   const [weeks, setWeeks] = useState(loadInitialWeeks);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -134,10 +353,13 @@ function App() {
   const [rosterText, setRosterText] = useState("");
   const [rosterPreview, setRosterPreview] = useState([]);
   const [rosterUnknowns, setRosterUnknowns] = useState([]);
-  const [manageOpen, setManageOpen] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.innerWidth >= 768;
-  });
+  const [manageOpen, setManageOpen] = useState(false);
+  const [commissioner, setCommissioner] = useState(false);
+  const [watchlists, setWatchlists] = useState(readWatchlists);
+  const [onlyWatched, setOnlyWatched] = useState(false);
+  const [scenarioTeam, setScenarioTeam] = useState("");
+  const [recap, setRecap] = useState(null);
+  const [recapBusy, setRecapBusy] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(() => {
     if (typeof window === "undefined") return true;
     let stored;
@@ -155,6 +377,32 @@ function App() {
     selectedIndex
   };
   const selectedKey = weekIdentityKey(week);
+  const watched = watchlists[selectedKey] || [];
+  useEffect(() => {
+    try {
+      localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlists));
+    } catch {
+      setStorageError(true);
+    }
+  }, [watchlists]);
+  useEffect(() => {
+    setScenarioTeam("");
+    setOnlyWatched(false);
+    setStatusFilter("all");
+  }, [selectedKey]);
+  useEffect(() => () => {
+    if (recap) URL.revokeObjectURL(recap.url);
+  }, [recap]);
+  const toggleWatch = team => {
+    const alias = aliasForTeam(team);
+    setWatchlists(prev => {
+      const current = prev[selectedKey] || [];
+      return {
+        ...prev,
+        [selectedKey]: current.includes(alias) ? current.filter(a => a !== alias) : [...current, alias]
+      };
+    });
+  };
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -201,16 +449,6 @@ function App() {
     }
   }, [clearNotice]);
   useEffect(() => () => clearNotice(), [clearNotice]);
-  const jumpToWarnings = useCallback(() => {
-    if (typeof document === "undefined") return;
-    const el = document.getElementById("warnings-panel");
-    if (el) {
-      el.scrollIntoView({
-        behavior: "smooth",
-        block: "center"
-      });
-    }
-  }, []);
   const fetchScores = useCallback(async ({
     silent = false
   } = {}) => {
@@ -250,7 +488,7 @@ function App() {
         text: `Live score sync failed: ${error.message}`
       });else if (requestRef.current === controller) pushNotice({
         type: "warn",
-        text: "Score request timed out. Try Sync Live Scores again."
+        text: "Score request timed out. Try Sync scores again."
       });
     } finally {
       clearTimeout(timeout);
@@ -276,23 +514,6 @@ function App() {
     };
   }, [autoRefresh, selectedKey, fetchScores]);
   const sums = useMemo(() => calculateWeek(week), [week]);
-  const animElim = useAnimatedNumber(sums.eliminated);
-  const animSurv = useAnimatedNumber(sums.survivors);
-  const teamLookup = useMemo(() => {
-    const map = new Map();
-    (week?.teams || []).forEach(team => {
-      const alias = aliasForTeam(team.team);
-      if (alias && !map.has(alias)) {
-        map.set(alias, team);
-        return;
-      }
-      const key = (team.team || "").toUpperCase();
-      if (key && !map.has(key)) {
-        map.set(key, team);
-      }
-    });
-    return map;
-  }, [week]);
   const rosterStats = useMemo(() => {
     const entries = week?.entries || [];
     let picks = 0;
@@ -327,6 +548,7 @@ function App() {
     const nextResult = normalizedResult(result);
     setWeeks(prev => prev.map((w, i) => i !== selectedIndex ? w : {
       ...w,
+      localDraft: true,
       teams: (w.teams || []).map(t => t.team === teamName ? {
         ...t,
         result: nextResult,
@@ -336,7 +558,10 @@ function App() {
   };
   const addWeek = () => {
     try {
-      const nextWeek = nextWeekDefinition(weeks, week);
+      const nextWeek = {
+        ...nextWeekDefinition(weeks, week),
+        localDraft: true
+      };
       setWeeks(prev => [...prev, nextWeek]);
       setSelectedIndex(weeks.length);
     } catch (error) {
@@ -355,12 +580,13 @@ function App() {
     if (weeks.some((w, i) => i !== selectedIndex && weekIdentityKey(w) === weekIdentityKey(next))) {
       pushNotice({
         type: "warn",
-        text: "That season/week already exists. Select its tab instead."
+        text: "That season/week already exists. Select that week instead."
       });
       return;
     }
     setWeeks(prev => prev.map((w, i) => i !== selectedIndex ? w : {
       ...w,
+      localDraft: true,
       [field]: value,
       lastFetchedUtc: null,
       lastWarnings: [],
@@ -430,6 +656,7 @@ function App() {
     }
     setWeeks(prev => prev.map((w, i) => i !== selectedIndex ? w : {
       ...w,
+      localDraft: true,
       totalsMode: "teams",
       entries: [],
       source: null,
@@ -458,6 +685,7 @@ function App() {
       const nextTeams = buildTeamsFromEntries(nextEntries, w.teams);
       return normalizeWeek({
         ...w,
+        localDraft: true,
         source: null,
         totalsMode: "roster",
         entries: nextEntries,
@@ -496,7 +724,10 @@ function App() {
           requestRef.current = null;
           controller?.abort();
           setSyncing(false);
-          setWeeks(imported);
+          setWeeks(imported.map(w => ({
+            ...w,
+            localDraft: true
+          })));
           setSelectedIndex(0);
           pushNotice({
             type: "success",
@@ -511,48 +742,6 @@ function App() {
       }
     };
     reader.readAsText(file);
-  };
-  const renderScore = team => {
-    const live = team.live;
-    if (!live) return "—";
-    if (!Number.isFinite(live.teamScore) || !Number.isFinite(live.opponentScore)) return "—";
-    return `${live.teamScore} – ${live.opponentScore}`;
-  };
-  const renderGameLine = team => {
-    const live = team.live;
-    if (!live) return team._status === "final" ? "Final (manual)" : "No live data";
-    const vsAt = live.homeAway === "home" ? "vs" : "@";
-    const opponent = live.opponent || live.opponentAbbr || "TBD";
-    const statusText = live.completed ? "Final" : live.statusText || (live.state === "pre" ? formatGameTime(live.kickoff) : "In progress");
-    return React.createElement("div", null, React.createElement("div", {
-      className: "font-medium"
-    }, `${vsAt} ${opponent}`), React.createElement("div", {
-      className: "text-[11px] text-tecmo-white/70"
-    }, statusText));
-  };
-  const renderRosterPick = pickName => {
-    const label = (pickName || "").trim();
-    if (!label) {
-      return React.createElement("span", {
-        className: "text-tecmo-white/40"
-      }, "-");
-    }
-    const alias = aliasForTeam(label);
-    const teamInfo = alias ? teamLookup.get(alias) : teamLookup.get(label.toUpperCase());
-    const unknown = Boolean(label) && !alias;
-    return React.createElement("div", {
-      className: "flex items-center justify-between gap-2"
-    }, React.createElement("div", {
-      className: "flex items-center gap-2"
-    }, React.createElement(TeamIcon, {
-      teamName: label
-    }), React.createElement("span", {
-      className: unknown ? "text-[var(--tecmo-red)]" : ""
-    }, label)), teamInfo ? React.createElement(ResultBadge, {
-      result: teamInfo.result
-    }) : unknown ? React.createElement("span", {
-      className: "helper-8bit text-[var(--tecmo-red)]"
-    }, "Unknown") : null);
   };
   const tableTeams = useMemo(() => {
     const base = (week?.teams || []).map(t => {
@@ -604,303 +793,166 @@ function App() {
     });
   }, [week.lastFetchedUtc]);
   const autoRefreshText = autoRefresh ? "Refreshing every 60s" : "Manual sync";
+  const exposure = useMemo(() => new Map(week.teams.map(t => [t.team, teamExposure(week, t.team)])), [week]);
+  const shownTeams = useMemo(() => tableTeams.filter(t => !onlyWatched || watched.includes(aliasForTeam(t.team))).sort((a, b) => Number(watched.includes(aliasForTeam(b.team))) - Number(watched.includes(aliasForTeam(a.team))) || Number(b._isLive) - Number(a._isLive)), [tableTeams, onlyWatched, watched]);
+  const scenario = scenarioTeam ? exposure.get(scenarioTeam) : null;
+  const applyWorkbook = imported => {
+    const key = weekIdentityKey(imported);
+    const index = weeks.findIndex(w => weekIdentityKey(w) === key);
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setSyncing(false);
+    setWeeks(prev => index < 0 ? [...prev, imported] : prev.map(w => weekIdentityKey(w) === key ? imported : w));
+    setSelectedIndex(index < 0 ? weeks.length : index);
+    pushNotice({
+      type: "success",
+      text: `${imported.season} Week ${imported.weekNumber}: ${fmt(imported.entries.length)} entries applied to this browser.`,
+      persist: true
+    });
+  };
+  const openRecap = async () => {
+    setRecapBusy(true);
+    try {
+      const model = recapModel(week);
+      const blob = await createRecapImage(model);
+      setRecap({
+        model,
+        blob,
+        url: URL.createObjectURL(blob),
+        fileName: `LMS-${model.season}-Week-${model.weekNumber}-recap.png`
+      });
+    } catch (error) {
+      pushNotice({
+        type: "error",
+        text: error.message
+      });
+    } finally {
+      setRecapBusy(false);
+    }
+  };
   return React.createElement("div", {
-    className: "mx-auto max-w-7xl px-4 sm:px-6 py-6"
-  }, React.createElement("section", {
-    className: "prize-board mb-6",
+    className: "app-shell"
+  }, React.createElement("a", {
+    className: "skip-link",
+    href: "#main-content"
+  }, "Skip to games"), React.createElement("header", {
+    className: "app-header"
+  }, React.createElement("div", null, React.createElement("h1", {
+    className: "pixel-font"
+  }, "LMS NFL"), React.createElement("p", null, "Last Man Standing · ", week.season)), React.createElement("nav", {
+    "aria-label": "Display mode",
+    className: "mode-switch"
+  }, React.createElement("button", {
+    "aria-pressed": !commissioner,
+    onClick: () => setCommissioner(false)
+  }, "Viewer"), React.createElement("button", {
+    "aria-pressed": commissioner,
+    onClick: () => setCommissioner(true)
+  }, "Commissioner"))), !commissioner && React.createElement("section", {
+    className: "prize-board",
     "aria-label": "League scoreboard"
   }, React.createElement("div", {
-    className: "board-topline pixel-font"
-  }, React.createElement("span", null, "LMS / NFL"), React.createElement("span", null, week.season, " SEASON"), React.createElement("span", null, "WEEK ", String(week.weekNumber).padStart(2, "0"))), React.createElement("div", {
+    className: "board-topline"
+  }, React.createElement("span", null, week.season, " SEASON"), React.createElement("span", null, "WEEK ", String(week.weekNumber).padStart(2, "0"))), React.createElement("div", {
     className: "board-prize"
-  }, React.createElement("p", {
-    className: "pixel-font board-label"
+  }, React.createElement("h2", {
+    className: "board-label"
   }, week.season === 2026 ? "CASH PRIZE" : "SEASON ARCHIVE"), React.createElement("div", {
     className: "pixel-font prize-digits"
-  }, week.season === 2026 ? "$390,000" : String(week.season)), React.createElement("p", {
-    className: "pixel-font board-tagline"
-  }, "LAST MAN STANDING")), React.createElement("div", {
-    className: "board-counters"
-  }, React.createElement("div", null, React.createElement("span", {
+  }, week.season === 2026 ? "$390,000" : week.season), React.createElement("p", {
+    className: "board-tagline"
+  }, fmt(sums.grandTotal), " entries at week lock"))), commissioner && React.createElement("section", {
+    className: "workspace-intro"
+  }, React.createElement("h2", {
     className: "pixel-font"
-  }, "ENTRIES"), React.createElement("strong", {
-    className: "pixel-mono"
-  }, fmt(sums.grandTotal))), React.createElement("div", null, React.createElement("span", {
-    className: "pixel-font"
-  }, "REMAINING"), React.createElement("strong", {
+  }, "Commissioner workspace"), React.createElement("p", null, "Imports and edits stay in this browser. This is a local workspace, not an authenticated publishing console. Export a backup before making changes.")), React.createElement("section", {
+    className: "status-strip",
+    "aria-label": "Entry status summary",
+    "aria-describedby": "status-definition"
+  }, React.createElement("div", null, React.createElement("span", null, "Remaining"), React.createElement("strong", {
     className: "pixel-mono board-green"
-  }, fmt(animSurv))), React.createElement("div", null, React.createElement("span", {
-    className: "pixel-font"
-  }, "ELIMINATED"), React.createElement("strong", {
+  }, fmt(sums.survivors))), React.createElement("div", null, React.createElement("span", null, "Safe"), React.createElement("strong", {
+    className: "pixel-mono board-green"
+  }, fmt(sums.safe))), React.createElement("div", null, React.createElement("span", null, "Pending"), React.createElement("strong", {
+    className: "pixel-mono gold"
+  }, fmt(sums.pending))), React.createElement("div", null, React.createElement("span", null, "Out"), React.createElement("strong", {
     className: "pixel-mono board-red"
-  }, fmt(animElim)))), React.createElement("div", {
-    className: "board-footer pixel-mono"
-  }, React.createElement("span", null, hasLiveGames ? "● GAMES LIVE" : "● LEAGUE TRACKER"), React.createElement("span", null, autoRefresh ? "AUTO SYNC / 60 SEC" : "MANUAL SYNC"))), React.createElement("div", {
-    className: "sticky-sync -mx-4 sm:-mx-6 px-4 sm:px-6 py-3"
+  }, fmt(sums.eliminated)))), React.createElement("p", {
+    id: "status-definition",
+    className: "status-definition"
+  }, "Remaining includes safe and pending entries. Out includes pre-eliminated entries."), React.createElement("div", {
+    className: "week-toolbar"
   }, React.createElement("div", {
-    className: "flex flex-wrap items-center gap-3 justify-between"
-  }, React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, React.createElement("button", {
-    onClick: () => fetchScores(),
-    disabled: syncing,
-    className: "btn-8bit warn inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-60"
-  }, syncing ? "Syncing…" : "Sync Live Scores"), React.createElement("span", {
-    className: "chip"
-  }, React.createElement("span", {
-    className: "w-2 h-2 rounded-full bg-[var(--tecmo-gold)]"
-  }), autoRefreshText)), React.createElement("div", {
-    className: "chip text-xs"
-  }, lastSyncShort === "Never" ? "Waiting for first sync" : `Last sync: ${lastSyncShort}`))), React.createElement("div", {
-    className: "flex flex-col md:flex-row md:items-end md:justify-between gap-4"
-  }, React.createElement("div", null, React.createElement("h1", {
-    className: "pixel-font text-tecmo-gold text-xl md:text-2xl"
-  }, "Last Man Standing – NFL"), React.createElement("p", {
-    className: "helper-8bit mt-1"
-  }, "Live elimination tracker with one-click ESPN score sync.")), React.createElement("div", {
-    className: "flex flex-wrap gap-2"
-  }, React.createElement("select", {
+    className: "week-controls"
+  }, React.createElement("label", {
+    className: "sr-only",
+    htmlFor: "season-select"
+  }, "Season"), React.createElement("select", {
+    id: "season-select",
     "aria-label": "Season",
-    className: "select-8bit px-3 py-2",
     value: week.season,
     onChange: e => setSelectedIndex(weeks.findIndex(w => w.season === Number(e.target.value)))
-  }, [...new Set(weeks.map(w => w.season))].sort((a, b) => b - a).map(season => React.createElement("option", {
-    key: season,
-    value: season
-  }, season, season < 2026 ? " Archive" : " Season"))), weeks.map((w, i) => w.season === week.season && React.createElement(Pill, {
+  }, [...new Set(weeks.map(w => w.season))].sort((a, b) => b - a).map(year => React.createElement("option", {
+    key: year,
+    value: year
+  }, year, year < 2026 ? " Archive" : " Season"))), React.createElement("label", {
+    className: "sr-only",
+    htmlFor: "week-select"
+  }, "Week"), React.createElement("select", {
+    id: "week-select",
+    "aria-label": "Week",
+    value: selectedIndex,
+    onChange: e => setSelectedIndex(Number(e.target.value))
+  }, weeks.map((w, i) => w.season === week.season ? React.createElement("option", {
     key: i,
-    active: i === selectedIndex,
-    onClick: () => setSelectedIndex(i)
-  }, w.name)), React.createElement("button", {
-    onClick: () => addWeek(),
-    className: "btn-8bit secondary px-3 py-1.5 text-xs"
-  }, "+ Add Week"))), React.createElement("div", {
-    className: "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-6"
-  }, React.createElement(StatCard, {
-    title: "Grand Total",
-    value: sums.grandTotal,
-    sub: "Entries at week lock"
-  }), React.createElement(StatCard, {
-    title: "Pre-Eliminated",
-    value: sums.preOutTotal,
-    sub: "No pick • Rule violations"
-  }), React.createElement(StatCard, {
-    title: "Eliminated (Live)",
-    value: animElim,
-    sub: `${fmt(sums.losers)} from losses/pushes`
-  }), React.createElement(StatCard, {
-    title: "Survivors",
-    value: animSurv,
-    sub: `${fmt(sums.pending)} pending · ${fmt(sums.safe)} safe`
-  })), storageError && React.createElement("p", {
-    role: "alert",
-    className: "panel-8bit notice-warn p-3 mt-4"
-  }, "Browser storage is unavailable. Export JSON to keep your changes."), sums.warnings.map(warning => React.createElement("p", {
-    key: warning,
-    role: "alert",
-    className: "panel-8bit notice-warn p-3 mt-4"
-  }, warning)), React.createElement("p", {
-    className: "helper-8bit mt-3"
-  }, week.source ? `Source: ${week.source}. ` : "", "Remaining includes entries with games still pending. Ties count as losses."), React.createElement("div", {
-    className: "mt-4"
-  }, React.createElement("div", {
-    className: "progress-8bit overflow-hidden"
-  }, React.createElement("div", {
-    className: "bar",
-    style: {
-      width: `${Math.min(100, sums.pct).toFixed(2)}%`
-    }
-  })), React.createElement("div", {
-    className: "helper-8bit mt-1"
-  }, sums.pct.toFixed(1), "% eliminated")), syncNotice && React.createElement("div", {
-    role: "alert",
-    onClick: () => {
-      if (syncNotice.action === "jump-to-warnings") jumpToWarnings();
-    },
-    className: `mt-6 panel-8bit px-4 py-3 text-sm flex items-center gap-3 ${syncNotice.type === "error" ? "notice-error" : syncNotice.type === "warn" ? "notice-warn" : syncNotice.type === "success" ? "notice-success" : "notice-info"} ${syncNotice.action ? "cursor-pointer" : ""}`
-  }, React.createElement("span", {
-    className: "pixel-font text-[11px] uppercase"
-  }, syncNotice.type === "error" ? "[!]" : syncNotice.type === "warn" ? "[!]" : syncNotice.type === "success" ? "[✓]" : "[i]"), React.createElement("span", null, syncNotice.text)), React.createElement("div", {
-    className: "grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8"
-  }, React.createElement("div", {
-    className: "lg:col-span-2"
-  }, React.createElement("div", {
-    className: "panel-8bit rounded-md overflow-hidden"
-  }, React.createElement("div", {
-    className: "px-5 py-4 border-b border-white/20 space-y-3"
-  }, React.createElement("div", {
-    className: "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-  }, React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, React.createElement("h2", {
-    className: "pixel-font text-sm"
-  }, "Picks (", week.name, ")"), rosterStats.hasSecondPick && React.createElement("span", {
-    className: "badge-8bit badge-pending"
-  }, rosterStats.hasThirdPick ? "Three Picks" : "Two Picks")), hasRoster && React.createElement("div", {
-    className: "flex flex-wrap items-center gap-2"
-  }, React.createElement("span", {
-    className: "helper-8bit text-xs"
-  }, "View"), React.createElement("button", {
-    className: `pill-8bit ${picksView === "teams" ? "active" : ""}`,
-    onClick: () => setPicksView("teams")
-  }, "Team Totals"), React.createElement("button", {
-    className: `pill-8bit ${picksView === "roster" ? "active" : ""}`,
-    onClick: () => setPicksView("roster")
-  }, "Roster"))), picksView === "teams" ? React.createElement("div", {
-    className: "flex flex-wrap gap-2 justify-between"
-  }, React.createElement("div", {
-    className: "flex flex-wrap gap-2"
-  }, [{
-    key: "all",
-    label: "All"
-  }, {
-    key: "pending",
-    label: "Pending"
-  }, {
-    key: "live",
-    label: "Live"
-  }, {
-    key: "final",
-    label: "Final"
-  }].map(f => React.createElement("button", {
-    key: f.key,
-    className: `pill-8bit ${statusFilter === f.key ? "active" : ""}`,
-    onClick: () => setStatusFilter(f.key)
-  }, f.label))), React.createElement("div", {
-    className: "flex flex-wrap items-center gap-2"
-  }, React.createElement("span", {
-    className: "helper-8bit text-xs"
-  }, "Sort"), React.createElement("button", {
-    className: `pill-8bit ${sortMode === "picks" ? "active" : ""}`,
-    onClick: () => setSortMode("picks")
-  }, "Picks ↓"), React.createElement("button", {
-    className: `pill-8bit ${sortMode === "alpha" ? "active" : ""}`,
-    onClick: () => setSortMode("alpha")
-  }, "A–Z"))) : React.createElement("div", {
-    className: "flex flex-wrap items-center justify-between gap-2"
-  }, React.createElement("div", {
-    className: "helper-8bit"
-  }, "Entries: ", fmt(rosterStats.entries), " / Picks: ", fmt(rosterStats.picks)), React.createElement("input", {
-    "aria-label": "Search entries",
-    className: "input-8bit px-3 py-2",
-    placeholder: "Find your entry…",
-    value: rosterSearch,
-    onChange: e => {
-      setRosterSearch(e.target.value);
-      setRosterPage(0);
-    }
-  }))), React.createElement("div", {
-    className: "table-scroll overflow-x-auto"
-  }, picksView === "roster" ? React.createElement("table", {
-    className: "w-full text-sm table-8bit"
-  }, React.createElement("thead", null, React.createElement("tr", {
-    className: "text-left"
-  }, React.createElement("th", {
-    className: "px-4 py-3"
-  }, "Name"), React.createElement("th", {
-    className: "px-4 py-3"
-  }, "Pick 1"), rosterStats.hasSecondPick && React.createElement("th", {
-    className: "px-4 py-3"
-  }, "Pick 2"), rosterStats.hasThirdPick && React.createElement("th", {
-    className: "px-4 py-3"
-  }, "Pick 3"), React.createElement("th", {
-    className: "px-4 py-3"
-  }, "Entry Status"))), React.createElement("tbody", null, visibleRoster.length === 0 && React.createElement("tr", null, React.createElement("td", {
-    colSpan: 5,
-    className: "px-4 py-6 text-center"
-  }, "No matching entries.")), visibleRoster.map((entry, idx) => React.createElement("tr", {
-    key: `${entry.name || "entry"}-${idx}`
-  }, React.createElement("td", {
-    className: "px-4 py-3 font-medium"
-  }, entry.name || "-"), React.createElement("td", {
-    className: "px-4 py-3"
-  }, renderRosterPick(entry.pick1)), rosterStats.hasSecondPick && React.createElement("td", {
-    className: "px-4 py-3"
-  }, renderRosterPick(entry.pick2)), rosterStats.hasThirdPick && React.createElement("td", {
-    className: "px-4 py-3"
-  }, renderRosterPick(entry.pick3)), React.createElement("td", {
-    className: "px-4 py-3"
-  }, entry.preOutReason || entryStatus(entry, rosterResults, week.requiredPicks)))))) : React.createElement("table", {
-    className: "w-full text-sm table-8bit"
-  }, React.createElement("thead", null, React.createElement("tr", {
-    className: "text-left"
-  }, React.createElement("th", {
-    className: "px-4 py-3"
-  }, "Team"), React.createElement("th", {
-    className: "px-4 py-3 text-right"
-  }, "Picks"), React.createElement("th", {
-    className: "px-4 py-3 text-center"
-  }, "Result"), React.createElement("th", {
-    className: "px-4 py-3 text-center"
-  }, "Score"), React.createElement("th", {
-    className: "px-4 py-3"
-  }, "Game Status"), React.createElement("th", {
-    className: "px-4 py-3 text-right"
-  }, "Override"))), React.createElement("tbody", null, tableTeams.map((t, idx) => {
-    const rowTone = t._isLive ? t.result === RESULT.Lose ? "table-row-lose" : t.result === RESULT.Win ? "table-row-win" : t.result === RESULT.Push ? "table-row-push" : "table-row-live" : "";
-    return React.createElement("tr", {
-      key: t.team + idx,
-      className: rowTone
-    }, React.createElement("td", {
-      className: "px-4 py-3 font-medium"
-    }, React.createElement("div", {
-      className: "flex items-center gap-2"
-    }, React.createElement(TeamIcon, {
-      teamName: t.team
-    }), React.createElement("span", null, t.team))), React.createElement("td", {
-      className: "px-4 py-3 tabular-nums text-right"
-    }, fmt(Number(t.count) || 0)), React.createElement("td", {
-      className: "px-4 py-3 text-center"
-    }, React.createElement(ResultBadge, {
-      result: t.result
-    })), React.createElement("td", {
-      className: "px-4 py-3 tabular-nums text-center"
-    }, renderScore(t)), React.createElement("td", {
-      className: "px-4 py-3"
-    }, React.createElement("div", {
-      className: "space-y-1"
-    }, React.createElement(LiveStatus, {
-      live: t.live
-    }), renderGameLine(t))), React.createElement("td", {
-      className: "px-4 py-3 text-right"
-    }, React.createElement(ResultControl, {
-      value: t.result,
-      onChange: value => setTeamResult(t.team, value)
-    })));
-  })))), picksView === "roster" && React.createElement("div", {
-    className: "px-5 py-3 flex flex-wrap items-center justify-between gap-3"
-  }, React.createElement("span", {
-    className: "helper-8bit"
-  }, fmt(filteredRoster.length), " entries · Page ", currentPage + 1, " of ", pageCount), React.createElement("div", {
-    className: "flex gap-3"
+    value: i
+  }, w.name) : null))), React.createElement("div", {
+    className: "action-row"
   }, React.createElement("button", {
-    className: "btn-8bit secondary px-3 py-2 disabled:opacity-40",
-    disabled: currentPage === 0,
-    onClick: () => setRosterPage(currentPage - 1)
-  }, "Previous"), React.createElement("button", {
-    className: "btn-8bit secondary px-3 py-2 disabled:opacity-40",
-    disabled: currentPage >= pageCount - 1,
-    onClick: () => setRosterPage(currentPage + 1)
-  }, "Next"))), React.createElement("div", {
-    className: "px-5 py-4 border-t border-white/20"
-  }, React.createElement("h3", {
-    className: "pixel-font text-xs mb-2 uppercase"
-  }, "Already Out"), React.createElement("ul", {
-    className: "space-y-1 text-sm"
-  }, [...(week.preOut || []), ...Object.entries((week.entries || []).reduce((counts, e) => {
-    if (e.preOutReason) counts[e.preOutReason] = (counts[e.preOutReason] || 0) + 1;
-    return counts;
-  }, {})).map(([label, count]) => ({
-    label,
-    count
-  }))].map((p, i) => React.createElement("li", {
-    key: i,
-    className: "flex items-center justify-between"
-  }, React.createElement("span", {
-    className: "text-tecmo-white/80"
-  }, p.label), React.createElement("span", {
-    className: "font-medium tabular-nums"
-  }, fmt(Number(p.count) || 0)))))))), React.createElement("div", {
+    className: "btn-8bit warn",
+    onClick: () => fetchScores(),
+    disabled: syncing
+  }, syncing ? "Syncing…" : "Sync scores"), React.createElement("button", {
+    className: "btn-8bit secondary",
+    onClick: openRecap,
+    disabled: recapBusy || !sums.grandTotal || sums.warnings.length > 0
+  }, recapBusy ? "Creating recap…" : "Weekly recap"))), React.createElement("div", {
+    className: "sync-status"
+  }, React.createElement("span", null, hasLiveGames ? "Games live · " : "", lastSyncShort === "Never" ? "Scores not synced yet" : `Updated ${lastSyncShort}`), React.createElement("label", {
+    className: "check-row"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: autoRefresh,
+    onChange: e => setAutoRefresh(e.target.checked)
+  }), "Auto-refresh every 60s")), week.localDraft && React.createElement("p", {
+    className: "local-copy"
+  }, "Local working copy · edits have not been published to the shared league site."), storageError && React.createElement("p", {
+    role: "alert",
+    className: "warning-text"
+  }, "Browser storage is unavailable. Your watchlist and edits may not survive a reload."), sums.warnings.map(w => React.createElement("p", {
+    key: w,
+    role: "alert",
+    className: "warning-text"
+  }, w)), syncNotice && React.createElement("div", {
+    role: "status",
+    className: `notice notice-${syncNotice.type}`
+  }, React.createElement("span", null, syncNotice.text), React.createElement("button", {
+    "aria-label": "Dismiss notice",
+    onClick: () => setSyncNotice(null)
+  }, "Dismiss")), (week.lastWarnings || []).length > 0 && React.createElement("details", {
+    id: "warnings-panel",
+    className: "warning-text"
+  }, React.createElement("summary", null, week.lastWarnings.length, " teams need score review"), week.lastWarnings.map(w => React.createElement("p", {
+    key: w
+  }, w))), React.createElement("details", {
+    className: "week-details"
+  }, React.createElement("summary", null, "Week details & counting rules"), React.createElement("p", null, fmt(sums.grandTotal), " entries at lock. ", fmt(sums.losers), " out from team losses and ", fmt(sums.preOutTotal), " pre-eliminated. Remaining includes safe and pending entries. Ties count as losses. ", week.requiredPicks, " pick", week.requiredPicks === 1 ? "" : "s", " required per entry."), week.source && React.createElement("p", null, "Source: ", week.source)), commissioner && React.createElement("div", {
+    className: "commissioner-content"
+  }, React.createElement(WorkbookImporter, {
+    season: week.season,
+    onApply: applyWorkbook,
+    onNotice: pushNotice
+  }), React.createElement("div", {
     className: "space-y-6"
   }, React.createElement("div", {
     className: "panel-8bit p-5 rounded-md"
@@ -908,7 +960,8 @@ function App() {
     className: "flex items-center justify-between gap-3"
   }, React.createElement("h3", {
     className: "pixel-font text-sm uppercase"
-  }, "Manage Weeks & Picks"), React.createElement("button", {
+  }, "Advanced editing & backups"), React.createElement("button", {
+    "aria-expanded": manageOpen,
     onClick: () => setManageOpen(open => !open),
     className: "btn-8bit secondary px-3 py-1 text-xs"
   }, manageOpen ? "Hide" : "Show")), manageOpen && React.createElement("div", {
@@ -924,6 +977,7 @@ function App() {
       const value = e.target.value;
       setWeeks(prev => prev.map((w, i) => i === selectedIndex ? {
         ...w,
+        localDraft: true,
         name: value
       } : w));
     }
@@ -1012,6 +1066,7 @@ function App() {
       const value = Number(e.target.value);
       setWeeks(prev => prev.map((w, i) => i === selectedIndex ? {
         ...w,
+        localDraft: true,
         declaredGrandTotal: nonnegativeCount(value)
       } : w));
     }
@@ -1055,42 +1110,7 @@ function App() {
   }, SEASON_TYPES.map(opt => React.createElement("option", {
     key: opt.value,
     value: opt.value
-  }, opt.label))))), React.createElement("div", {
-    className: "panel-8bit p-3 space-y-3"
-  }, React.createElement("div", {
-    className: "flex flex-wrap items-center gap-2"
-  }, React.createElement("button", {
-    onClick: () => fetchScores(),
-    disabled: syncing,
-    className: `btn-8bit warn inline-flex items-center gap-2 px-3 py-2 text-sm disabled:opacity-60`
-  }, syncing ? "Syncing…" : "Sync Live Scores"), React.createElement("label", {
-    className: "inline-flex items-center gap-2 text-xs"
-  }, React.createElement("input", {
-    type: "checkbox",
-    className: "accent-[var(--tecmo-gold)]",
-    checked: autoRefresh,
-    onChange: e => setAutoRefresh(e.target.checked)
-  }), React.createElement("span", {
-    className: "helper-8bit"
-  }, "Auto refresh every 60s"))), React.createElement("div", {
-    className: "helper-8bit"
-  }, "Source: ESPN public scoreboard API. Last sync:", " ", week.lastFetchedUtc ? formatPacific(week.lastFetchedUtc, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZoneName: "short"
-  }) : "never"), (week.lastWarnings || []).length > 0 && React.createElement("div", {
-    id: "warnings-panel",
-    className: "panel-8bit notice-warn px-3 py-2 text-[11px]"
-  }, React.createElement("div", {
-    className: "pixel-font text-[11px]"
-  }, "Teams needing manual review"), React.createElement("ul", {
-    className: "mt-1 space-y-1"
-  }, week.lastWarnings.map((w, i) => React.createElement("li", {
-    key: i
-  }, "• ", w))))), React.createElement("label", {
+  }, opt.label))))), React.createElement("label", {
     className: "block"
   }, React.createElement("span", {
     className: "helper-8bit"
@@ -1108,6 +1128,7 @@ function App() {
       });
       setWeeks(prev => prev.map((w, i) => i === selectedIndex ? {
         ...w,
+        localDraft: true,
         preOut
       } : w));
     }
@@ -1118,10 +1139,116 @@ function App() {
   }, "Quick How-To"), React.createElement("ol", {
     className: "mt-2 space-y-2 text-sm list-decimal list-inside"
   }, React.createElement("li", null, "Pick a week above (add the next week when ready)."), React.createElement("li", null, "Paste your picks (Team,Count per line), preview, then apply."), React.createElement("li", null, "For multi-pick weeks, paste Name and up to three picks. Each eliminated entry counts once."), React.createElement("li", null, "Hit ", React.createElement("span", {
+    className: "font-semibold"
+  }, "Sync scores"), " to pull ESPN results."), React.createElement("li", null, "Manual overrides still work — ties count as losses when syncing."), React.createElement("li", null, "Export/Import JSON for off-line backups between weeks."))))), React.createElement("main", {
+    id: "main-content",
+    tabIndex: "-1"
+  }, React.createElement("section", {
+    className: "watchlist-panel",
+    "aria-labelledby": "watchlist-heading"
+  }, React.createElement("div", {
+    className: "section-heading"
+  }, React.createElement("h2", {
+    id: "watchlist-heading",
     className: "pixel-font"
-  }, "Sync Live Scores"), " to pull ESPN results."), React.createElement("li", null, "Manual overrides still work — ties count as losses when syncing."), React.createElement("li", null, "Export/Import JSON for off-line backups between weeks."))))), React.createElement("div", {
-    className: "mt-10 text-center text-xs text-tecmo-white/70"
-  }, "Built for your LMS pool • Powered by ESPN live scores • Tecmo skin"));
+  }, "My Picks"), React.createElement("button", {
+    className: "filter-button",
+    "aria-pressed": onlyWatched,
+    onClick: () => setOnlyWatched(!onlyWatched)
+  }, onlyWatched ? "Show all teams" : `Only my picks (${watched.length})`)), React.createElement("p", null, watched.length ? "Your watched teams appear first. This list is saved on this device." : "Use + My Picks on a game to follow your teams here. This does not submit a league pick."), watched.length > 0 && React.createElement("div", {
+    className: "watch-chips"
+  }, watched.map(alias => React.createElement("button", {
+    key: alias,
+    "aria-label": `Remove ${TEAM_DISPLAY[alias]} from My Picks`,
+    onClick: () => toggleWatch(alias)
+  }, TEAM_DISPLAY[alias], " ", React.createElement("span", {
+    "aria-hidden": "true"
+  }, "×"))))), React.createElement("div", {
+    className: "section-heading game-heading"
+  }, React.createElement("h2", {
+    className: "pixel-font"
+  }, "Games · ", week.name), React.createElement("label", null, "Sort", React.createElement("select", {
+    "aria-label": "Sort games",
+    value: sortMode,
+    onChange: e => setSortMode(e.target.value)
+  }, React.createElement("option", {
+    value: "picks"
+  }, "Most picked"), React.createElement("option", {
+    value: "alpha"
+  }, "Team A–Z")))), React.createElement("div", {
+    className: "game-filters",
+    "aria-label": "Game status filters"
+  }, [{
+    key: "all",
+    label: "All"
+  }, {
+    key: "pending",
+    label: "Upcoming"
+  }, {
+    key: "live",
+    label: "Live"
+  }, {
+    key: "final",
+    label: "Final"
+  }].map(f => React.createElement("button", {
+    key: f.key,
+    "aria-pressed": statusFilter === f.key,
+    onClick: () => setStatusFilter(f.key)
+  }, f.label))), React.createElement("div", {
+    className: "game-grid"
+  }, shownTeams.map(t => React.createElement(GameCard, {
+    key: t.team,
+    team: t,
+    week: week,
+    watched: watched.includes(aliasForTeam(t.team)),
+    onWatch: () => toggleWatch(t.team),
+    commissioner: commissioner,
+    onResult: value => setTeamResult(t.team, value),
+    exposure: exposure.get(t.team)
+  }))), !shownTeams.length && React.createElement("div", {
+    className: "empty-state"
+  }, React.createElement("h3", null, "No teams to show"), React.createElement("p", null, onlyWatched ? "Add teams to My Picks or show all teams." : "Try a different status filter. If this week has no picks yet, import them in Commissioner view."), React.createElement("button", {
+    className: "btn-8bit secondary",
+    onClick: () => {
+      setOnlyWatched(false);
+      setStatusFilter("all");
+    }
+  }, "Show all teams")), React.createElement("details", {
+    className: "what-if panel-8bit"
+  }, React.createElement("summary", null, "What if a team loses?"), React.createElement("p", null, "This scenario changes only the selected pending team to a loss. Other results stay as they are; it is not a prediction."), React.createElement("label", null, "Team to simulate", React.createElement("select", {
+    value: scenarioTeam,
+    onChange: e => setScenarioTeam(e.target.value)
+  }, React.createElement("option", {
+    value: ""
+  }, "Choose a pending team"), week.teams.filter(t => t.result === RESULT.Pending).map(t => React.createElement("option", {
+    key: t.team
+  }, t.team)))), scenario && (scenario.exact ? React.createElement("p", {
+    className: "scenario-result"
+  }, React.createElement("strong", null, fmt(scenario.additionalOut)), " additional entries out · ", React.createElement("strong", null, fmt(scenario.remaining)), " remaining") : React.createElement("p", null, "Import the entry roster to calculate overlap in a multiple-pick week."))), commissioner && hasRoster && React.createElement("details", {
+    className: "roster-details"
+  }, React.createElement("summary", null, "Entry roster on this device (", fmt(week.entries.length), ")"), React.createElement("label", null, "Search entries", React.createElement("input", {
+    value: rosterSearch,
+    onChange: e => {
+      setRosterSearch(e.target.value);
+      setRosterPage(0);
+    }
+  })), React.createElement("div", {
+    className: "preview-table"
+  }, React.createElement("table", null, React.createElement("thead", null, React.createElement("tr", null, React.createElement("th", null, "Name"), React.createElement("th", null, "Picks"), React.createElement("th", null, "Status"))), React.createElement("tbody", null, visibleRoster.map((e, i) => React.createElement("tr", {
+    key: i
+  }, React.createElement("td", null, e.name), React.createElement("td", null, [e.pick1, e.pick2, e.pick3].filter(Boolean).join(", ") || "—"), React.createElement("td", null, e.preOutReason || entryStatus(e, rosterResults, week.requiredPicks))))))), React.createElement("div", {
+    className: "action-row"
+  }, React.createElement("button", {
+    disabled: currentPage === 0,
+    onClick: () => setRosterPage(currentPage - 1)
+  }, "Previous"), React.createElement("span", null, "Page ", currentPage + 1, " of ", pageCount), React.createElement("button", {
+    disabled: currentPage >= pageCount - 1,
+    onClick: () => setRosterPage(currentPage + 1)
+  }, "Next")))), React.createElement("footer", null, "Built for your LMS pool · ESPN scores · Ties are losses"), recap && React.createElement(RecapDialog, {
+    recap: recap,
+    onClose: () => setRecap(null),
+    onNotice: pushNotice
+  }));
 }
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(React.createElement(App, null));
